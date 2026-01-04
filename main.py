@@ -13,8 +13,8 @@ from modeling.training import *
 def main():
     t0_all = time.time()
 
-    dataset_dir = "dataset\tiles"
-    proxy_dir = "dataset\proxy_biomass"
+    dataset_dir = "dataset\\tiles"
+    proxy_dir = "dataset\\proxy_biomass"
     proxy_csv_path = os.path.join(proxy_dir, "proxy_biomass.csv")
 
     output_dir = "outputs"
