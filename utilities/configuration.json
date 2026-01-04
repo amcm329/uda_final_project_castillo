@@ -1,8 +1,8 @@
 // configuration.json
 {
   "auth": {
-    "client_id_env": "client_id",
-    "client_secret_env": "client_secret",
+    "client_id_env": "sh-42bad174-cdc4-42a6-9612-8acd1e07d547",
+    "client_secret_env": "C2AmF7Ias8bOZlCUAL33RfHQ926aGpO5",
     "token_url": "https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token",
     "process_url": "https://sh.dataspace.copernicus.eu/api/v1/process"
   },
