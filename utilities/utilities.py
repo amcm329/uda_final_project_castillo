@@ -1,6 +1,7 @@
 import os
 import csv
 import numpy as np
+import rasterio
 
 # ============================================================
 # We define utilities (timing)
