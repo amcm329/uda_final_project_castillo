@@ -33,7 +33,7 @@ def main():
     canny_high = 0.15
 
     batch_size = 128
-    epochs = 200
+    epochs = 50
     lr = 3e-4
     weight_decay = 1e-4
     grad_clip_max_norm = 1.0
