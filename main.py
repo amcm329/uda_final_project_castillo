@@ -2,9 +2,9 @@ import os
 import time
 import torch
 
-from utilities import utilities
-#from quality import quality_vegetation. 
-from modeling import training
+from utilities.utilities import *
+#from quality.quality_vegetation import * 
+from modeling.training import *
 # ============================================================
 # We define a main runner in the exact pipeline order
 # ============================================================
