@@ -22,6 +22,7 @@ def format_seconds(seconds):
     rem = seconds - 60 * minutes
     return f"{minutes}m {rem:.2f}s"
 
+
 def read_tile_tif(filepath):
     """
     Reads a multi-band GeoTIFF tile into a numpy array.
