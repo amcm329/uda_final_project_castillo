@@ -23,6 +23,41 @@ def format_seconds(seconds):
     rem = seconds - 60 * minutes
     return f"{minutes}m {rem:.2f}s"
 
+def read_json(path):
+    """
+    Reads a json file from disk and returns the parsed object.
+
+    Args:
+        path (str): Path to a json file.
+
+    Returns:
+        dict: Parsed json as a dictionary.
+    """
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+def build_oauth_session(client_id, client_secret, token_url):
+    """
+    Builds an oauth2 session for copernicus data space.
+
+    Args:
+        client_id (str): OAuth client id.
+        client_secret (str): OAuth client secret.
+        token_url (str): Token url.
+
+    Returns:
+        OAuth2Session: Authenticated session.
+    """
+    client = BackendApplicationClient(client_id=client_id)
+    oauth = OAuth2Session(client=client)
+    oauth.fetch_token(
+        token_url=token_url,
+        client_id=client_id,
+        client_secret=client_secret,
+        include_client_id=True,
+    )
+    return oauth
+    
 
 def read_tile_tif(filepath):
     """
