@@ -1,28 +1,22 @@
-# vegetation.py
+# pastizales.py
 import json
-import math
 import os
 import time
 
 import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib.patches as mpatches
-
+import pandas as pd
 import geopandas as gpd
-from shapely.geometry import box, Polygon, MultiPolygon
+from shapely.geometry import box
 
 import rasterio
 from rasterio.io import MemoryFile
-from rasterio.features import rasterize
-
-import cartopy.crs as ccrs
-from cartopy.mpl.gridliner import LONGITUDE_FORMATTER, LATITUDE_FORMATTER
 
 import requests
 from osgeo import gdal
 
 from oauthlib.oauth2 import BackendApplicationClient
 from requests_oauthlib import OAuth2Session
+
 
 def load_gadm_level1_in_memory(gadm_zip, level1_member):
     """
@@ -71,35 +65,90 @@ def load_state_polygon(cfg):
     return state
 
 
-def bbox_to_pixels(bbox, res_m):
+def filter_pastizal_natural(gdf, keywords_lower):
     """
-    Converts a geographic bbox into approximate pixel dimensions at a target meter resolution.
+    Filters features whose string columns match the configured pasture keywords.
 
     Args:
-        bbox (list): [lon_min, lat_min, lon_max, lat_max].
-        res_m (float): Target meters per pixel.
+        gdf (GeoDataFrame): Input geodataframe.
+        keywords_lower (list): Lowercased keywords to search.
 
     Returns:
-        tuple: (width_px, height_px, width_m, height_m).
+        GeoDataFrame: Filtered geodataframe.
     """
-    lon_min, lat_min, lon_max, lat_max = bbox
-    mean_lat = 0.5 * (lat_min + lat_max)
+    if gdf.empty:
+        return gdf
 
-    m_per_deg_lat = 111320.0
-    m_per_deg_lon = 111320.0 * math.cos(math.radians(mean_lat))
+    mask = np.zeros(len(gdf), dtype=bool)
+    for col in gdf.columns:
+        if gdf[col].dtype == object:
+            vals = gdf[col].astype(str).str.lower()
+            col_mask = np.zeros(len(gdf), dtype=bool)
+            for kw in keywords_lower:
+                col_mask |= vals.str.contains(str(kw), na=False)
+            mask |= col_mask
 
-    width_m = (lon_max - lon_min) * m_per_deg_lon
-    height_m = (lat_max - lat_min) * m_per_deg_lat
-
-    width_px = max(1, int(width_m / float(res_m)))
-    height_px = max(1, int(height_m / float(res_m)))
-
-    return width_px, height_px, float(width_m), float(height_m)
+    return gdf[mask].copy()
 
 
-def request_state_rgb(oauth, process_url, bbox, width_px, height_px, time_from, time_to, max_cloud_coverage, mosaicking_order):
+def load_inegi_pastizal_natural(shp_paths, keywords_lower):
     """
-    Requests a sentinel-2 rgb mosaic for a bbox and returns it as an array.
+    Loads inegi shapefiles and filters them to natural pastures.
+
+    Args:
+        shp_paths (list): List of shapefile paths.
+        keywords_lower (list): Lowercased keywords to search.
+
+    Returns:
+        GeoDataFrame: Merged pasture polygons in epsg:4326.
+    """
+    parts = []
+    for p in shp_paths:
+        print(f"[inegi] reading {p} ...")
+        g = gpd.read_file(p)
+        if g.crs is None:
+            raise RuntimeError(f"{p} has no crs; set it before running")
+        g = g.to_crs("EPSG:4326")
+        g_past = filter_pastizal_natural(g, keywords_lower)
+        print(f"[inegi] file={p} total={len(g)} pastizal_nat={len(g_past)}")
+        if not g_past.empty:
+            parts.append(g_past)
+
+    if not parts:
+        raise RuntimeError("no 'pastizales naturales' polygons found in any inegi shapefile")
+
+    merged = gpd.GeoDataFrame(pd.concat(parts, ignore_index=True), crs="EPSG:4326")
+    print(f"[inegi] merged pastizal_nat polygons: {len(merged)}")
+    return merged
+
+
+def pasture_fraction_for_tile(tile_poly, pastizal_eq, eq_area_crs):
+    """
+    Computes the fraction of tile area covered by natural pasture polygons.
+
+    Args:
+        tile_poly (shapely geometry): Tile polygon in epsg:4326.
+        pastizal_eq (GeoDataFrame): Pasture polygons in an equal-area crs.
+        eq_area_crs (str): Equal-area crs string.
+
+    Returns:
+        float: Pasture fraction in [0, 1].
+    """
+    tile_eq = gpd.GeoDataFrame({"id": [0]}, geometry=[tile_poly], crs="EPSG:4326").to_crs(eq_area_crs)
+    tile_geom_eq = tile_eq.geometry.iloc[0]
+    tile_area = float(tile_geom_eq.area)
+
+    inter = gpd.overlay(pastizal_eq, tile_eq, how="intersection")
+    if inter.empty or tile_area <= 0:
+        return 0.0
+
+    past_area = float(inter.geometry.area.sum())
+    return float(past_area / tile_area)
+
+
+def dem_tiff(oauth, process_url, bbox, width_px, height_px, dem_instance, upsampling, downsampling):
+    """
+    Requests dem for a bbox and returns a tiff in memory.
 
     Args:
         oauth (OAuth2Session): Authenticated session.
@@ -107,19 +156,18 @@ def request_state_rgb(oauth, process_url, bbox, width_px, height_px, time_from, 
         bbox (list): [lon_min, lat_min, lon_max, lat_max].
         width_px (int): Output width.
         height_px (int): Output height.
-        time_from (str): Iso timestamp start.
-        time_to (str): Iso timestamp end.
-        max_cloud_coverage (int): Max cloud coverage percent.
-        mosaicking_order (str): Mosaicking order string.
+        dem_instance (str): Dem instance name.
+        upsampling (str): Upsampling mode.
+        downsampling (str): Downsampling mode.
 
     Returns:
-        tuple: (rgb, transform, crs) where rgb is (h,w,3) float32.
+        np.ndarray: Dem array shaped (h,w) float32.
     """
     evalscript = """//VERSION=3
 function setup() {
-  return { input: ["B04","B03","B02"], output: { bands: 3, sampleType: "FLOAT32" } };
+  return { input: ["DEM"], output: { id: "default", bands: 1, sampleType: SampleType.FLOAT32 } };
 }
-function evaluatePixel(s) { return [s.B04, s.B03, s.B02]; }
+function evaluatePixel(s) { return [s.DEM]; }
 """
     body = {
         "input": {
@@ -129,12 +177,9 @@ function evaluatePixel(s) { return [s.B04, s.B03, s.B02]; }
             },
             "data": [
                 {
-                    "type": "sentinel-2-l2a",
-                    "dataFilter": {
-                        "timeRange": {"from": time_from, "to": time_to},
-                        "maxCloudCoverage": int(max_cloud_coverage),
-                        "mosaickingOrder": str(mosaicking_order),
-                    },
+                    "type": "dem",
+                    "dataFilter": {"demInstance": str(dem_instance)},
+                    "processing": {"upsampling": str(upsampling), "downsampling": str(downsampling)},
                 }
             ],
         },
@@ -148,56 +193,38 @@ function evaluatePixel(s) { return [s.B04, s.B03, s.B02]; }
 
     resp = oauth.post(process_url, json=body)
     if not resp.ok:
-        raise RuntimeError(f"state rgb request failed: {resp.status_code}\n{resp.text}")
+        raise RuntimeError(f"dem request failed: {resp.status_code}\n{resp.text}")
 
     with MemoryFile(resp.content) as memfile:
         with memfile.open() as src:
-            data = src.read().astype(np.float32)  # (3,h,w)
-            transform = src.transform
-            crs = src.crs
+            data = src.read().astype(np.float32)
 
-    rgb = np.transpose(data, (1, 2, 0))
-    return rgb, transform, crs
+    return data[0]
 
 
-def normalize_rgb(rgb, mask):
+def dem_mean_for_bbox(oauth, process_url, bbox, coarse_px, dem_instance, upsampling, downsampling):
     """
-    Normalizes rgb values to [0,1] using robust percentiles over masked pixels.
+    Computes a coarse mean dem for a bbox.
 
     Args:
-        rgb (np.ndarray): Rgb array shaped (h,w,3).
-        mask (np.ndarray): Mask shaped (h,w), 1 inside, 0 outside.
+        oauth (OAuth2Session): Authenticated session.
+        process_url (str): Process api url.
+        bbox (list): [lon_min, lat_min, lon_max, lat_max].
+        coarse_px (int): Coarse width and height.
+        dem_instance (str): Dem instance name.
+        upsampling (str): Upsampling mode.
+        downsampling (str): Downsampling mode.
 
     Returns:
-        np.ndarray: Normalized rgb array shaped (h,w,3).
+        float: Mean dem value.
     """
-    rgb_masked = rgb.copy()
-    for c in range(3):
-        channel = rgb_masked[..., c]
-        channel[mask == 0] = np.nan
-        rgb_masked[..., c] = channel
-
-    flat = rgb_masked.reshape(-1, 3)
-    flat = flat[~np.isnan(flat).any(axis=1)]
-    if flat.size == 0:
-        raise RuntimeError("no valid pixels found inside mask")
-
-    vmin = float(np.percentile(flat, 2))
-    vmax = float(np.percentile(flat, 98))
-    if vmax <= vmin:
-        vmax = vmin + 1e-6
-
-    rgb_vis = (rgb_masked - vmin) / (vmax - vmin)
-    rgb_vis = np.clip(rgb_vis, 0.0, 1.0)
-
-    # We set outside-state pixels to white for a clean background.
-    rgb_vis[np.isnan(rgb_vis)] = 1.0
-    return rgb_vis
+    dem_data = dem_tiff(oauth, process_url, bbox, coarse_px, coarse_px, dem_instance, upsampling, downsampling)
+    return float(np.nanmean(dem_data))
 
 
-def main_vegetation(config_path, client_id, client_secret):
+def main_pasture(config_path, client_id, client_secret):
     """
-    Creates a chihuahua map mosaic and overlays sampling tiles and teseachi bbox, then saves a png.
+    Computes pasture fractions and dem summaries and saves them as a csv.
 
     Args:
         config_path (str): Path to configuration json.
@@ -213,124 +240,76 @@ def main_vegetation(config_path, client_id, client_secret):
     token_url = cfg["auth"]["token_url"]
     process_url = cfg["auth"]["process_url"]
 
-    vp = cfg["vegetation_plot"]
-    margin_deg = float(vp["margin_deg"])
-    target_res_m = float(vp["target_res_m"])
-    max_dim_px = int(vp["max_dim_px"])
-    time_from = vp["time_from"]
-    time_to = vp["time_to"]
-    max_cloud_coverage = int(vp["max_cloud_coverage"])
-    mosaicking_order = vp["mosaicking_order"]
-    out_png = vp["out_png"]
-    title = vp["title"]
+    state = load_state_polygon(cfg)
+    state_union = state.unary_union
 
-    tile_defs = cfg["tiles"]["tile_defs"]
-    teseachi_bbox = cfg["tiles"]["teseachi_bbox"]
+    pasture_cfg = cfg["pasture"]
+    shp_paths = pasture_cfg["inegi_shp_paths"]
+    eq_area_crs = pasture_cfg["eq_area_crs"]
+    keywords_lower = pasture_cfg["keywords_lower"]
+    out_csv = pasture_cfg["out_csv"]
+    dem_coarse_px = pasture_cfg["dem_coarse_px"]
+
+    dw = cfg["data_wrangler"]
+    dem_instance = dw["dem_instance"]
+    upsampling = dw["upsampling"]
+    downsampling = dw["downsampling"]
 
     print("[auth] building oauth session...")
     oauth = build_oauth_session(client_id, client_secret, token_url)
 
-    print("[gadm] loading chihuahua polygon in memory...")
-    state = load_state_polygon(cfg)
+    print("[inegi] loading pastizales naturales...")
+    pastizal_all = load_inegi_pastizal_natural(shp_paths, keywords_lower)
+    pastizal_eq = pastizal_all.to_crs(eq_area_crs)
 
-    minx, miny, maxx, maxy = state.total_bounds
-    roi_bbox = [float(minx - margin_deg), float(miny - margin_deg), float(maxx + margin_deg), float(maxy + margin_deg)]
-    print(f"[roi] bbox_with_margin={roi_bbox}")
+    tile_defs = cfg["tiles"]["tile_defs"]
+    teseachi_bbox = cfg["tiles"]["teseachi_bbox"]
 
-    width_px, height_px, width_m, height_m = bbox_to_pixels(roi_bbox, target_res_m)
-    max_dim = max(width_px, height_px)
-    if max_dim > max_dim_px:
-        scale = float(max_dim_px) / float(max_dim)
-        width_px = max(1, int(width_px * scale))
-        height_px = max(1, int(height_px * scale))
+    rows = []
+    print("[tiles] evaluating 15 tiles + teseachi...")
 
-    res_x_m = float(width_m) / float(width_px)
-    res_y_m = float(height_m) / float(height_px)
-    mean_res_m = 0.5 * (res_x_m + res_y_m)
-    print(f"[mosaic] size={width_px}x{height_px} approx_res_m={mean_res_m:.1f}")
+    # We do sampling tiles.
+    for t in tile_defs:
+        tid = int(t["id"])
+        bbox = t["bbox"]
+        tile_poly = box(*bbox)
+        inside = bool(tile_poly.intersects(state_union))
 
-    print("[mosaic] requesting sentinel-2 rgb...")
-    rgb, transform, crs = request_state_rgb(
-        oauth=oauth,
-        process_url=process_url,
-        bbox=roi_bbox,
-        width_px=width_px,
-        height_px=height_px,
-        time_from=time_from,
-        time_to=time_to,
-        max_cloud_coverage=max_cloud_coverage,
-        mosaicking_order=mosaicking_order,
+        frac_past = pasture_fraction_for_tile(tile_poly, pastizal_eq, eq_area_crs)
+        mean_dem = dem_mean_for_bbox(oauth, process_url, bbox, dem_coarse_px, dem_instance, upsampling, downsampling)
+
+        rows.append(
+            {
+                "id": tid,
+                "bbox": bbox,
+                "inside_chihuahua": inside,
+                "pasture_frac": float(frac_past),
+                "mean_dem": float(mean_dem),
+            }
+        )
+
+    # We do teseachi.
+    tes_poly = box(*teseachi_bbox)
+    tes_inside = bool(tes_poly.intersects(state_union))
+    tes_frac = pasture_fraction_for_tile(tes_poly, pastizal_eq, eq_area_crs)
+    tes_mean_dem = dem_mean_for_bbox(oauth, process_url, teseachi_bbox, dem_coarse_px, dem_instance, upsampling, downsampling)
+
+    rows.append(
+        {
+            "id": 16,
+            "bbox": teseachi_bbox,
+            "inside_chihuahua": tes_inside,
+            "pasture_frac": float(tes_frac),
+            "mean_dem": float(tes_mean_dem),
+        }
     )
 
-    # We rasterize the state polygon into the mosaic grid.
-    state_r = state.to_crs(crs) if state.crs != crs else state
-    shapes = [(geom, 1) for geom in state_r.geometry]
-    mask = rasterize(shapes=shapes, out_shape=(rgb.shape[0], rgb.shape[1]), transform=transform, fill=0, dtype="uint8")
+    df = pd.DataFrame(rows).sort_values("id")
+    print(df.to_string(index=False))
 
-    rgb_vis = normalize_rgb(rgb, mask)
-
-    # We build tiles geodataframes.
-    tile_polys = [box(*t["bbox"]) for t in tile_defs]
-    tiles_gdf = gpd.GeoDataFrame({"id": [int(t["id"]) for t in tile_defs]}, geometry=tile_polys, crs="EPSG:4326")
-    teseachi_gdf = gpd.GeoDataFrame({"name": ["teseachi"]}, geometry=[box(*teseachi_bbox)], crs="EPSG:4326")
-
-    proj = ccrs.PlateCarree()
-
-    fig = plt.figure(figsize=(8, 10))
-    fig.patch.set_facecolor("white")
-
-    ax = plt.axes(projection=proj)
-    ax.set_facecolor("white")
-
-    extent_state = [roi_bbox[0], roi_bbox[2], roi_bbox[1], roi_bbox[3]]
-    ax.imshow(rgb_vis, origin="upper", extent=extent_state, transform=proj)
-    ax.set_title(title, fontsize=12)
-    ax.set_extent(extent_state, crs=proj)
-
-    gl = ax.gridlines(draw_labels=True, linewidth=0.5, linestyle="--", color="gray")
-    gl.top_labels = False
-    gl.right_labels = False
-    gl.xlabel_style = {"size": 9}
-    gl.ylabel_style = {"size": 9}
-    gl.xformatter = LONGITUDE_FORMATTER
-    gl.yformatter = LATITUDE_FORMATTER
-
-    # We draw the state outline.
-    for geom in state.geometry:
-        if isinstance(geom, Polygon):
-            geoms = [geom]
-        elif isinstance(geom, MultiPolygon):
-            geoms = list(geom.geoms)
-        else:
-            geoms = []
-        for g in geoms:
-            xs, ys = g.exterior.xy
-            ax.plot(xs, ys, color="black", linewidth=1.0, transform=proj)
-
-    # We draw teseachi.
-    for _, row in teseachi_gdf.iterrows():
-        poly = row.geometry
-        xs, ys = poly.exterior.xy
-        ax.fill(xs, ys, facecolor="magenta", alpha=0.25, transform=proj)
-        ax.plot(xs, ys, color="magenta", linewidth=2, transform=proj)
-
-    # We draw sampling tiles.
-    for _, row in tiles_gdf.iterrows():
-        poly = row.geometry
-        xs, ys = poly.exterior.xy
-        ax.fill(xs, ys, facecolor="cyan", alpha=0.30, transform=proj)
-        ax.plot(xs, ys, color="cyan", linewidth=1.5, transform=proj)
-
-    tile_patch = mpatches.Patch(facecolor="cyan", edgecolor="cyan", alpha=0.30, label="sampling tiles (1–15)")
-    tes_patch = mpatches.Patch(facecolor="magenta", edgecolor="magenta", alpha=0.25, label="teseachi tile")
-    ax.legend(handles=[tile_patch, tes_patch], loc="lower right", frameon=True, fontsize=10)
-
-    os.makedirs(os.path.dirname(out_png), exist_ok=True)
-    plt.tight_layout()
-    plt.savefig(out_png, dpi=200)
-    plt.close(fig)
-
-    print(f"[ok] vegetation plot has been successfully saved: {out_png}")
+    os.makedirs(os.path.dirname(out_csv), exist_ok=True)
+    df.to_csv(out_csv, index=False)
+    print(f"[ok] file has been successfully saved: {out_csv}")
 
     elapsed = time.time() - t0
     print(f"[done] time elapsed: {format_seconds(elapsed)}")
@@ -345,4 +324,4 @@ if __name__ == "__main__":
         raise RuntimeError("missing client_id/client_secret in environment")
 
     # CLIENT_ID and CLIENT_SECRET must exist in your environment / above this code
-    main_vegetation(config_path=config_path, client_id=client_id, client_secret=client_secret)
+    main_pasture(config_path=config_path, client_id=client_id, client_secret=client_secret)
