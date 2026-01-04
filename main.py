@@ -8,6 +8,7 @@ from modeling import training
 # ============================================================
 # We define a main runner in the exact pipeline order
 # ============================================================
+print(dir(utilities))
 
 def main():
     t0_all = time.time()
