@@ -1,3 +1,5 @@
+import time
+
 from utilies import utilities 
 #from quality import quality_vegetation. 
 from modeling import training
