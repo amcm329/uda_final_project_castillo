@@ -1,5 +1,6 @@
 import os
 import time
+import torch
 
 from utilities import utilities 
 #from quality import quality_vegetation. 
