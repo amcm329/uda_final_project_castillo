@@ -5,11 +5,11 @@ import torch
 from utilities.utilities import *
 #from quality.quality_vegetation import * 
 from modeling.training import *
+
+
 # ============================================================
 # We define a main runner in the exact pipeline order
 # ============================================================
-print(dir(utilities))
-
 def main():
     t0_all = time.time()
 
