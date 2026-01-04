@@ -1,4 +1,5 @@
 from utils import * 
+from modeling import training, metrics, plots 
 
 # ============================================================
 # We define a main runner in the exact pipeline order
