@@ -21,6 +21,72 @@ def format_seconds(seconds):
     rem = seconds - 60 * minutes
     return f"{minutes}m {rem:.2f}s"
 
+def read_tile_tif(filepath):
+    """
+    Reads a multi-band GeoTIFF tile into a numpy array.
+
+    Args:
+        filepath (str): Path to the GeoTIFF file.
+
+    Returns:
+        np.ndarray: Array of shape (C, H, W).
+    """
+    with rasterio.open(filepath) as src:
+        arr = src.read()
+    return arr
+
+
+def list_tile_files(dataset_dir):
+    """
+    Lists training tile files (tile_001..tile_015) and the Teseachi tile.
+
+    Args:
+        dataset_dir (str): Folder containing GeoTIFF tiles.
+
+    Returns:
+        tuple[list[tuple[int,str]], str]: (train_tiles, teseachi_tile)
+            train_tiles: list of (tile_id, filepath)
+            teseachi_tile: filepath
+    """
+    train_tiles = []
+    for i in range(1, 16):
+        fname = f"tile_{i:03d}.tif"
+        fpath = os.path.join(dataset_dir, fname)
+        if not os.path.exists(fpath):
+            raise FileNotFoundError(f"Missing tile file: {fpath}")
+        train_tiles.append((i, fpath))
+
+    teseachi_path = os.path.join(dataset_dir, "tile_teseachi.tif")
+    if not os.path.exists(teseachi_path):
+       raise FileNotFoundError(f"Missing Teseachi tile file: {teseachi_path}")
+
+    return train_tiles, teseachi_path
+
+
+def load_proxy_csv(proxy_csv_path):
+    """
+    Loads tile-level proxy biomass values from CSV.
+
+    Expected columns: id, coordinate_x, coordinate_y, biomass
+
+    Args:
+        proxy_csv_path (str): Path to proxy_biomass.csv.
+
+    Returns:
+        dict: Mapping tile_id (int) -> biomass (float), and "Teseachi" -> biomass (float) if present.
+    """
+    proxy = {}
+    with open(proxy_csv_path, "r", newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            tid = row["id"]
+            biomass = float(row["biomass"])
+            if tid.strip().lower() == "teseachi" or tid.strip().lower() == "teseachi":
+                proxy["Teseachi"] = biomass
+            else:
+                proxy[int(tid)] = biomass
+    return proxy
+
 
 def load_teseachi_truth_and_align(teseachi_truth_csv_path, yhat_teseachi):
     """
