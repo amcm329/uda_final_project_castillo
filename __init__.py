@@ -1,2 +1,2 @@
-from .modeling import metrics, training, plots
+from .modeling import metrics
 from .utilities import utilities 
