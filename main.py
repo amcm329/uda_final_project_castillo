@@ -1,7 +1,6 @@
 from utilies import utilities 
 #from quality import quality_vegetation. 
-from modeling import training, metrics, plots 
-
+from modeling import training
 # ============================================================
 # We define a main runner in the exact pipeline order
 # ============================================================
