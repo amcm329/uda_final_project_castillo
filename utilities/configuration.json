@@ -53,7 +53,7 @@
     "eq_area_crs": "EPSG:6372",
     "keywords_lower": ["pastizales naturales", "praderas naturales", "pn, py, ph, vw, vs y vsi"],
     "dem_coarse_px": 64,
-    "out_csv": "quality/vegetation/vegetation.csv"
+    "out_csv": "outputs/quality_outputs/vegetation.csv"
   },
   "vegetation_plot": {
     "margin_deg": 0.1,
@@ -63,7 +63,7 @@
     "time_to": "2020-10-31T23:59:59Z",
     "max_cloud_coverage": 20,
     "mosaicking_order": "leastCC",
-    "out_png": "quality/vegetation/geographical_tiles.png",
+    "out_png": "outputs/quality_outputs/geographical_tiles.png",
     "title": "Chihuahua Spatial Sampling Design (10 km × 10 km tiles)"
   }
 }
