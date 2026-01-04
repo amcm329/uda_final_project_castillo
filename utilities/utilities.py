@@ -3,6 +3,9 @@ import csv
 import rasterio
 import numpy as np
 
+from oauthlib.oauth2 import BackendApplicationClient
+from requests_oauthlib import OAuth2Session
+
 # ============================================================
 # We define utilities (timing)
 # ============================================================
