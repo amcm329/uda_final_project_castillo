@@ -1,6 +1,6 @@
-# Architecture proposed. 
-import csv
-import math 
+# training.py (updated to read ALL params from configuration.json; uses read_json from utilities)
+import os
+import math
 import time
 
 import rasterio
@@ -208,6 +208,7 @@ def spearman_corr(x, y):
         return 0.0
     return float((rx * ry).sum() / denom)
 
+
 # ============================================================
 # We define Stage A model (Encoder + Decoder)
 # ============================================================
@@ -220,7 +221,6 @@ class TinyCnnEncoder(nn.Module):
         self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
         self.emb_dim = emb_dim
 
-        # We keep the embedding size fixed at 64 via channel count + GAP.
         base_dim = 64
         if emb_dim != base_dim:
             self.proj = nn.Linear(base_dim, emb_dim)
@@ -244,8 +244,6 @@ class LightEdgeDecoder(nn.Module):
         super().__init__()
         self.out_h = out_h
         self.out_w = out_w
-
-        # We follow the report pattern: Linear(emb_dim->4096), reshape to 1x64x64, upsample, conv.
         self.fc = nn.Linear(emb_dim, 4096)
         self.conv = nn.Conv2d(1, 1, kernel_size=3, stride=1, padding=1)
 
@@ -285,12 +283,12 @@ class PatchSslDataset(Dataset):
         return len(self.patches)
 
     def __getitem__(self, idx):
-        patch = self.patches[idx]  # (C,H,W) in [0,1]
+        patch = self.patches[idx]
         gray = compute_ndvi_from_patch(patch)
-        edges = canny_edges(gray, sigma=self.canny_sigma, low_threshold=self.canny_low, high_threshold=self.canny_high)  # (H,W) in {0,1}
+        edges = canny_edges(gray, sigma=self.canny_sigma, low_threshold=self.canny_low, high_threshold=self.canny_high)
 
         x = torch.from_numpy(patch).float()
-        y = torch.from_numpy(edges[None, :, :]).float()  # (1,H,W)
+        y = torch.from_numpy(edges[None, :, :]).float()
         return x, y
 
 
@@ -356,7 +354,7 @@ def train_stage_a_ssl(model, loader, device, epochs, lr, plot_dir, weight_decay,
         lr (float): Learning rate.
         plot_dir (str): Output folder for plots.
         weight_decay (float): Adam weight decay.
-        pos_weight (float): Positive class weight for BCEWithLogitsLoss (edge sparsity handling).
+        pos_weight (float): Positive class weight for BCEWithLogitsLoss.
         grad_clip_max_norm (float): Gradient clipping max norm (set <=0 to disable).
         f1_threshold (float): Probability threshold for F1 computation.
 
@@ -368,7 +366,6 @@ def train_stage_a_ssl(model, loader, device, epochs, lr, plot_dir, weight_decay,
     model = model.to(device)
     opt = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
 
-    # We address extreme class imbalance in edge maps (mostly zeros) using pos_weight.
     _pos_w = torch.tensor([float(pos_weight)], dtype=torch.float32, device=device)
     crit = nn.BCEWithLogitsLoss(pos_weight=_pos_w)
 
@@ -404,7 +401,6 @@ def train_stage_a_ssl(model, loader, device, epochs, lr, plot_dir, weight_decay,
 
         print(f"[Stage A] Epoch {ep}/{epochs} | BCE={mean_loss:.6f} | F1={mean_f1:.4f}")
 
-    # We plot training curves.
     plt.figure()
     plt.plot(loss_hist)
     plt.xlabel("Epoch")
@@ -600,46 +596,66 @@ def plot_stage_b_scatter(y_true, y_pred, plot_path, title):
     plt.close()
 
 
-# ============================================================
-# We define a main runner in the exact pipeline order
-# ============================================================
-def main_training():
+def resolve_device(device_preference):
+    """
+    Resolves the torch device string from preference.
+
+    Args:
+        device_preference (str): "auto", "cpu", or "cuda".
+
+    Returns:
+        str: Device string.
+    """
+    pref = str(device_preference).strip().lower()
+    if pref == "cpu":
+        return "cpu"
+    if pref == "cuda":
+        return "cuda" if torch.cuda.is_available() else "cpu"
+    return "cuda" if torch.cuda.is_available() else "cpu"
+
+
+def main_training(config_path):
     t0_all = time.time()
+    cfg = read_json(config_path)
 
-    dataset_dir = "dataset\\tiles"
-    proxy_dir = "dataset\\proxy_biomass"
-    proxy_csv_path = os.path.join(proxy_dir, "proxy_biomass.csv")
+    tr = cfg["training"]
 
-    output_dir = "outputs"
-    stage_a_plot_dir = os.path.join(output_dir, "stage_a_plots")
-    stage_b_plot_dir = os.path.join(output_dir, "stage_b_plots")
+    dataset_dir = tr["dataset_dir"]
+    proxy_dir = tr["proxy_dir"]
+    proxy_csv_path = os.path.join(proxy_dir, tr["proxy_csv_name"])
+
+    output_dir = tr["output_dir"]
+    stage_a_plot_dir = os.path.join(output_dir, tr["stage_a_plot_subdir"])
+    stage_b_plot_dir = os.path.join(output_dir, tr["stage_b_plot_subdir"])
+
     os.makedirs(output_dir, exist_ok=True)
     os.makedirs(stage_a_plot_dir, exist_ok=True)
     os.makedirs(stage_b_plot_dir, exist_ok=True)
 
-    # Hyperparameters (updated)
-    patch_size = 96
-    stride = 48
+    patch_size = int(tr["patch_size"])
+    stride = int(tr["stride"])
 
-    canny_sigma = 1.5
-    canny_low = 0.05
-    canny_high = 0.15
+    canny_sigma = float(tr["canny_sigma"])
+    canny_low = float(tr["canny_low"])
+    canny_high = float(tr["canny_high"])
 
-    batch_size = 128
-    epochs = 100
-    lr = 3e-4
-    weight_decay = 1e-4
-    grad_clip_max_norm = 1.0
+    batch_size = int(tr["batch_size"])
+    num_workers = int(tr["num_workers"])
+    shuffle = bool(tr["shuffle"])
 
-    pos_weight = 25.0
-    f1_threshold = 0.25
-    pred_threshold = 0.25
+    emb_dim = int(tr["emb_dim"])
+    epochs = int(tr["epochs"])
+    lr = float(tr["lr"])
+    weight_decay = float(tr["weight_decay"])
+    grad_clip_max_norm = float(tr["grad_clip_max_norm"])
 
-    ridge_alpha = 10.0
+    pos_weight = float(tr["pos_weight"])
+    f1_threshold = float(tr["f1_threshold"])
+    pred_threshold = float(tr["pred_threshold"])
 
-    device = "cpu"
-    if torch.cuda.is_available():
-        device = "cuda"
+    ridge_alpha = float(tr["ridge_alpha"])
+
+    device = resolve_device(tr["device_preference"])
 
     # ============================================================
     # 1) We load tiles and build patches (Stage A input X)
@@ -653,12 +669,17 @@ def main_training():
 
     proxy_map = load_proxy_csv(proxy_csv_path)
 
-    train_patches, train_tile_patch_index = build_training_patches(train_tiles=train_tiles, patch_size=patch_size, stride=stride)
-    teseachi_patches = build_teseachi_patches(teseachi_path=teseachi_path, patch_size=patch_size, stride=stride)
+    train_patches, train_tile_patch_index = build_training_patches(
+        train_tiles=train_tiles,
+        patch_size=patch_size,
+        stride=stride
+    )
+    teseachi_patches = build_teseachi_patches(
+        teseachi_path=teseachi_path,
+        patch_size=patch_size,
+        stride=stride
+    )
 
-    # ============================
-    # (B) REPLACEMENT PRINT BLOCK
-    # ============================
     # We infer expected patch counts from the actual tile raster sizes on disk.
     with rasterio.open(train_tiles[0][1]) as _src0:
         h0, w0 = _src0.height, _src0.width
@@ -681,15 +702,46 @@ def main_training():
     t0 = time.time()
     print("\n[Subsection] Stage A: Self-supervised Tiny CNN (Canny edge task)")
 
-    ssl_dataset = PatchSslDataset(patches_chw=train_patches, canny_sigma=canny_sigma, canny_low=canny_low, canny_high=canny_high)
-    ssl_loader = DataLoader(ssl_dataset, batch_size=batch_size, shuffle=True, num_workers=0)
+    ssl_dataset = PatchSslDataset(
+        patches_chw=train_patches,
+        canny_sigma=canny_sigma,
+        canny_low=canny_low,
+        canny_high=canny_high
+    )
+    ssl_loader = DataLoader(
+        ssl_dataset,
+        batch_size=batch_size,
+        shuffle=shuffle,
+        num_workers=num_workers
+    )
 
-    in_channels = train_patches[0].shape[0]
-    ssl_model = SslEdgeModel(in_channels=in_channels, emb_dim=64, patch_size=patch_size)
+    in_channels = int(train_patches[0].shape[0])
+    ssl_model = SslEdgeModel(in_channels=in_channels, emb_dim=emb_dim, patch_size=patch_size)
 
-    hist = train_stage_a_ssl(model=ssl_model, loader=ssl_loader, device=device, epochs=epochs, lr=lr, plot_dir=stage_a_plot_dir, weight_decay=weight_decay, pos_weight=pos_weight, grad_clip_max_norm=grad_clip_max_norm, f1_threshold=f1_threshold)
+    hist = train_stage_a_ssl(
+        model=ssl_model,
+        loader=ssl_loader,
+        device=device,
+        epochs=epochs,
+        lr=lr,
+        plot_dir=stage_a_plot_dir,
+        weight_decay=weight_decay,
+        pos_weight=pos_weight,
+        grad_clip_max_norm=grad_clip_max_norm,
+        f1_threshold=f1_threshold
+    )
 
-    visualize_stage_a_samples(model=ssl_model, patches=train_patches, device=device, plot_dir=stage_a_plot_dir, canny_sigma=canny_sigma, canny_low=canny_low, canny_high=canny_high, n=3, pred_threshold=pred_threshold)
+    visualize_stage_a_samples(
+        model=ssl_model,
+        patches=train_patches,
+        device=device,
+        plot_dir=stage_a_plot_dir,
+        canny_sigma=canny_sigma,
+        canny_low=canny_low,
+        canny_high=canny_high,
+        n=3,
+        pred_threshold=pred_threshold
+    )
 
     print(f"[Time] Stage A training elapsed: {format_seconds(time.time() - t0)}")
 
@@ -710,7 +762,7 @@ def main_training():
 
     z_teseachi = extract_patch_embeddings(encoder=encoder, patches=teseachi_patches, device=device, batch_size=batch_size)
 
-    print(f"We extracted embeddings for 15 tiles (train) and 1 tile (Teseachi).")
+    print("We extracted embeddings for 15 tiles (train) and 1 tile (Teseachi).")
     print(f"[Time] Embedding extraction elapsed: {format_seconds(time.time() - t0)}")
 
     # ============================================================
@@ -720,7 +772,11 @@ def main_training():
     print("\n[Subsection] Stage B: Proxy regression (Ridge)")
 
     train_tile_ids = [tid for tid, _ in train_tiles]
-    X_train, y_train = build_stage_b_training_data(embeddings_by_tile=embeddings_by_tile, proxy_map=proxy_map, train_tile_ids=train_tile_ids)
+    X_train, y_train = build_stage_b_training_data(
+        embeddings_by_tile=embeddings_by_tile,
+        proxy_map=proxy_map,
+        train_tile_ids=train_tile_ids
+    )
 
     ridge = train_stage_b_ridge(X_train=X_train, y_train=y_train, alpha=ridge_alpha)
     yhat_teseachi = ridge.predict(z_teseachi).astype(np.float32)
@@ -741,10 +797,13 @@ def main_training():
     print(f"[Stage A Metric] Final loss (lower is better): {stage_a_loss_last:.6f}")
     print(f"[Stage A Metric] Final F1 (higher is better): {stage_a_f1_last:.4f}")
 
-    teseachi_truth_path = os.path.join(proxy_dir, "teseachi_measured_biomass.csv")
+    teseachi_truth_path = os.path.join(proxy_dir, tr["teseachi_truth_csv_name"])
 
     if os.path.exists(teseachi_truth_path):
-        y_true_teseachi, yhat_use = load_teseachi_truth_and_align(teseachi_truth_csv_path=teseachi_truth_path, yhat_teseachi=yhat_teseachi)
+        y_true_teseachi, yhat_use = load_teseachi_truth_and_align(
+            teseachi_truth_csv_path=teseachi_truth_path,
+            yhat_teseachi=yhat_teseachi
+        )
 
         m = evaluate_stage_b(y_true=y_true_teseachi, y_pred=yhat_use)
 
@@ -752,7 +811,12 @@ def main_training():
         print(f"[Stage B Metric] RMSE on Teseachi (lower is better): {m['rmse']:.4f}")
         print(f"[Stage B Metric] Spearman rho on Teseachi (higher is better): {m['spearman']:.4f}")
 
-        plot_stage_b_scatter(y_true=y_true_teseachi, y_pred=yhat_use, plot_path=os.path.join(stage_b_plot_dir, "stage_b_teseachi_scatter.png"), title="Stage B: Predicted vs proxy biomass (Teseachi)")
+        plot_stage_b_scatter(
+            y_true=y_true_teseachi,
+            y_pred=yhat_use,
+            plot_path=os.path.join(stage_b_plot_dir, "stage_b_teseachi_scatter.png"),
+            title="Stage B: Predicted vs proxy biomass (Teseachi)"
+        )
     else:
         print("[Stage B Metric] Proxy Teseachi biomass file not found, so R2/RMSE/Spearman vs proxy cannot be computed.")
         print(f"We expected: {teseachi_truth_path}")
@@ -769,3 +833,8 @@ def main_training():
 
     print(f"[Time] Metrics/plots elapsed: {format_seconds(time.time() - t0)}")
     print(f"\n[Time] Total elapsed: {format_seconds(time.time() - t0_all)}")
+
+
+if __name__ == "__main__":
+    config_path = os.getenv("config_path", "configuration.json")
+    main_training(config_path=config_path)
