@@ -64,5 +64,40 @@
     "mosaicking_order": "leastCC",
     "out_png": "outputs/quality_outputs/geographical_tiles.png",
     "title": "Chihuahua Spatial Sampling Design (10 km × 10 km tiles)"
+  },
+  "training": {
+    "dataset_dir": "dataset/tiles",
+    "proxy_dir": "dataset/proxy_biomass",
+    "proxy_csv_name": "proxy_biomass.csv",
+    "teseachi_truth_csv_name": "teseachi_measured_biomass.csv",
+
+    "output_dir": "outputs",
+    "stage_a_plot_subdir": "stage_a_plots",
+    "stage_b_plot_subdir": "stage_b_plots",
+
+    "patch_size": 96,
+    "stride": 48,
+
+    "canny_sigma": 1.5,
+    "canny_low": 0.05,
+    "canny_high": 0.15,
+
+    "batch_size": 128,
+    "num_workers": 0,
+    "shuffle": true,
+
+    "emb_dim": 64,
+    "epochs": 100,
+    "lr": 0.0003,
+    "weight_decay": 0.0001,
+    "grad_clip_max_norm": 1.0,
+
+    "pos_weight": 25.0,
+    "f1_threshold": 0.25,
+    "pred_threshold": 0.25,
+
+    "ridge_alpha": 10.0,
+
+    "device_preference": "auto"
   }
 }
