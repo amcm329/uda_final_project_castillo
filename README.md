@@ -114,21 +114,21 @@ No parameters are hard-coded inside the scripts.
 
 ## Dependencies
 
-- **Python**: 3.11.5 (packaged by Anaconda, Inc.)
-- **os**: built-in (no version)
-- **json**: 2.0.9
-- **time**: built-in (no version)
-- **csv**: 1.0
-- **math**: built-in (no version)
-- **requests**: 2.31.0
-- **requests-oauthlib**: 2.0.0
-- **oauthlib**: 3.3.1
-- **numpy**: 1.24.4
-- **rasterio**: 1.4.3
-- **GDAL / osgeo**: not installed
-- **matplotlib**: 3.7.2
-- **torch**: 2.5.1+cpu
-- **scikit-learn**: 1.3.0
+- **Python**: 3.11.5 — Core programming language used for all data processing and modeling.
+- **os**: built-in — File system operations and environment interaction.
+- **json**: 2.0.9 — Reading and writing configuration and metadata files.
+- **time**: built-in — Timing, delays, and runtime measurement.
+- **csv**: 1.0 — Reading and writing tabular CSV files.
+- **math**: built-in — Basic mathematical functions.
+- **requests**: 2.31.0 — HTTP requests to external APIs and data services.
+- **requests-oauthlib**: 2.0.0 — OAuth2 authentication handling for API access.
+- **oauthlib**: 3.3.1 — Low-level OAuth protocol implementation.
+- **numpy**: 1.24.4 — Numerical arrays and vectorized computations.
+- **rasterio**: 1.4.3 — Reading, writing, and processing geospatial raster data.
+- **GDAL / osgeo**: not installed — Not used; geospatial I/O handled via rasterio.
+- **matplotlib**: 3.7.2 — Plotting and visualization of results and maps.
+- **torch**: 2.5.1+cpu — Neural network models and tensor computations.
+- **scikit-learn**: 1.3.0 — Classical machine learning models and evaluation metrics.
 
 ---
 
@@ -152,6 +152,6 @@ Export Copernicus credentials as environment variables referenced by the configu
 export CLIENT_ID=your_client_id
 export CLIENT_SECRET=your_client_secret
 
-
+These credentials are shared with the evaluator in a private message.
 
 
