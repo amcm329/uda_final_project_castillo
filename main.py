@@ -11,4 +11,11 @@ from quality.quality_vegetation import *
 from quality.quality_geographical_tiles import * 
 
 if __name__ == "__main__":
-    main_training()
+    
+    main_vegetation()
+
+    #main_pasture()
+
+    #main_data_wrangler()
+
+    #main_training()
