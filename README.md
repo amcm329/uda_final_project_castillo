@@ -44,7 +44,7 @@ The pipeline consists of four main stages:
 uda_final_project_castillo/
 ├── dataset/
 ├── outputs/
-├── processing/
+├── modeling/
 ├── quality/
 ├── utilities/
 ├── README.md
