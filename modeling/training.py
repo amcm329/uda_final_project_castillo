@@ -1,3 +1,5 @@
+# Architecture proposed. 
+
 import csv
 import math 
 
