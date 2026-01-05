@@ -150,23 +150,24 @@ def normalize_rgb(rgb, mask):
     return rgb_vis
 
 
-def main_vegetation(config_path, client_id, client_secret):
+def main_vegetation():
     """
     Creates a chihuahua map mosaic and overlays sampling tiles and teseachi bbox, then saves a png.
 
     Args:
-        config_path (str): Path to configuration json.
-        client_id (str): OAuth client id.
-        client_secret (str): OAuth client secret.
+        None
 
     Returns:
         None
     """
     t0 = time.time()
-    cfg = read_json(config_path)
+    cfg = read_json("utilities/configuration.json")
 
     token_url = cfg["auth"]["token_url"]
     process_url = cfg["auth"]["process_url"]
+
+    client_id = cfg["auth"]["client_id_env"]
+    client_secret = cfg["auth"]["client_secret_env"]
 
     vp = cfg["vegetation_plot"]
     margin_deg = float(vp["margin_deg"])
@@ -205,17 +206,7 @@ def main_vegetation(config_path, client_id, client_secret):
     print(f"[mosaic] size={width_px}x{height_px} approx_res_m={mean_res_m:.1f}")
 
     print("[mosaic] requesting sentinel-2 rgb...")
-    rgb, transform, crs = request_state_rgb(
-        oauth=oauth,
-        process_url=process_url,
-        bbox=roi_bbox,
-        width_px=width_px,
-        height_px=height_px,
-        time_from=time_from,
-        time_to=time_to,
-        max_cloud_coverage=max_cloud_coverage,
-        mosaicking_order=mosaicking_order,
-    )
+    rgb, transform, crs = request_state_rgb(oauth=oauth, process_url=process_url, bbox=roi_bbox, width_px=width_px, height_px=height_px, time_from=time_from, time_to=time_to, max_cloud_coverage=max_cloud_coverage, mosaicking_order=mosaicking_order)
 
     # We rasterize the state polygon into the mosaic grid.
     state_r = state.to_crs(crs) if state.crs != crs else state
