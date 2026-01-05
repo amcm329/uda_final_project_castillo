@@ -1,4 +1,5 @@
 # Vegetation table
+import io
 import os
 import json
 import time
