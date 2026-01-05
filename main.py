@@ -3,9 +3,12 @@ import time
 import torch
 
 from utilities.utilities import *
-#from quality.quality_vegetation import * 
-from modeling.training import *
 
+from modeling.training import *
+from modeling.data_wrangler import * 
+
+from quality.quality_vegetation import * 
+from quality.quality_geographical_tiles import * 
 
 # ============================================================
 # We define a main runner in the exact pipeline order
