@@ -60,10 +60,11 @@ def build_oauth_session(client_id, client_secret, token_url):
         include_client_id=True,
     )
     return oauth
-    
+
+
 def load_gadm_level1_in_memory(gadm_zip, level1_member):
     """
-    Loads the gadm level-1 shapefile from a zip downloaded into gdal in-memory storage.
+    Loads the gadm level-1 shapefile directly from a remote zip without using gdal.
 
     Args:
         gadm_zip (str): Url to gadm zip.
@@ -72,17 +73,8 @@ def load_gadm_level1_in_memory(gadm_zip, level1_member):
     Returns:
         GeoDataFrame: Level-1 gadm geodataframe.
     """
-    # We download into ram (vsimem).
-    zip_bytes = requests.get(gadm_zip, stream=False).content
-
-    vsimem_zip = "/vsimem/gadm41_mex_shp.zip"
-    gdal.FileFromMemBuffer(vsimem_zip, zip_bytes)
-
-    # We read the member directly through /vsizip + /vsimem.
-    gdf = gpd.read_file(f"/vsizip/{vsimem_zip}/{level1_member}")
-
-    # We cleanup in-memory files.
-    gdal.Unlink(vsimem_zip)
+    # We read the shapefile directly from the remote zip using geopandas.
+    gdf = gpd.read_file(f"zip+{gadm_zip}!{level1_member}")
     return gdf
 
 
