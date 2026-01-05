@@ -279,12 +279,7 @@ def build_stage_b_training_data(embeddings_by_tile, proxy_map, train_tile_ids):
             X shape (N_total_patches, D)
             y shape (N_total_patches,)
     """
-    X = np.vstack([
-        embeddings_by_tile[tid].mean(axis=0, keepdims=True)
-        for tid in train_tile_ids
-    ])
-    y = np.array([float(proxy_map[tid]) for tid in train_tile_ids], dtype=np.float32)
-    return X, y
+    X = np.vstack([embeddings_by_tile[tid].mean(axis=0, keepdims=True) for tid in train_tile_ids]); y = np.array([float(proxy_map[tid]) for tid in train_tile_ids], dtype=np.float32); return X, y
 
 
 def train_stage_b_ridge(X_train, y_train, alpha, use_standard_scaler=True, ridge_fit_intercept=True):
@@ -301,40 +296,7 @@ def train_stage_b_ridge(X_train, y_train, alpha, use_standard_scaler=True, ridge
     Returns:
         object: Trained sklearn pipeline.
     """
-    model = make_pipeline(
-        StandardScaler(),
-        Ridge(alpha=alpha, fit_intercept=bool(ridge_fit_intercept), random_state=0)
-    ) if bool(use_standard_scaler) else Ridge(
-        alpha=alpha, fit_intercept=bool(ridge_fit_intercept), random_state=0
-    )
-    model.fit(X_train, y_train)
-    return model
-
-
-def predict_stage_b_tile_level(ridge_model, z_teseachi):
-    """
-    Generates Stage B predictions for a single evaluation tile.
-
-    The prediction is computed at the tile level by averaging all patch
-    embeddings into a single vector, applying the Ridge model once, and then
-    broadcasting the resulting scalar prediction back to all patches. This
-    preserves compatibility with patch-level plots and metrics while keeping
-    the statistical model tile-consistent.
-
-    Args:
-        ridge_model:
-            Trained Ridge regression model.
-        z_teseachi (np.ndarray):
-            Patch embeddings for the evaluation tile,
-            shape (N_patches, D).
-
-    Returns:
-        np.ndarray:
-            Array of shape (N_patches,), where all values are identical
-            and equal to the tile-level prediction.
-    """
-    y_tile = ridge_model.predict(z_teseachi.mean(axis=0, keepdims=True))[0]
-    return np.full((z_teseachi.shape[0],), y_tile, dtype=np.float32)
+    model = make_pipeline(StandardScaler(), Ridge(alpha=alpha, fit_intercept=bool(ridge_fit_intercept), random_state=0)) if bool(use_standard_scaler) else Ridge(alpha=alpha, fit_intercept=bool(ridge_fit_intercept), random_state=0); model.fit(X_train, y_train); return model
 
 
 # ============================================================
