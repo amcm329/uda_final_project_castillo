@@ -161,10 +161,10 @@ To avoid potential issues related to version compatibility, dependencies may als
 
 ### 3. Set Authentication
 
-Export Copernicus credentials as environment variables referenced by the configuration file.
+Insert Copernicus credentials as variables referenced by the configuration file.
 
-- export CLIENT_ID=your_client_id
-- export CLIENT_SECRET=your_client_secret
+- CLIENT_ID=your_client_id
+- CLIENT_SECRET=your_client_secret
 
 These credentials are shared with the evaluator in a private message.
 
