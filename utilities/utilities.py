@@ -1,10 +1,11 @@
 # We define Utilities (generic functions relevant to all sections in this code).
 import os
 import csv
-import gpd 
 import json
 import rasterio
 import numpy as np
+
+import geopandas as gpd
 
 from requests_oauthlib import OAuth2Session
 from oauthlib.oauth2 import BackendApplicationClient
