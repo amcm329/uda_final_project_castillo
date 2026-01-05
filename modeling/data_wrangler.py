@@ -200,23 +200,23 @@ def write_multiband_geotiff(path, data, transform, crs, compress):
             dst.write(data[i], i + 1)
 
 
-def main_data_wrangler(config_path, client_id, client_secret):
+def main_data_wrangler():
     """
     Downloads sentinel-2 + dem tiles and saves them as compressed geotiffs.
 
     Args:
-        config_path (str): Path to configuration json.
-        client_id (str): OAuth client id.
-        client_secret (str): OAuth client secret.
+        None
 
     Returns:
         None
     """
     t0 = time.time()
-    cfg = read_json(config_path)
+    cfg = read_json("utilities/configuration.json")
 
     token_url = cfg["auth"]["token_url"]
     process_url = cfg["auth"]["process_url"]
+    client_id = cfg["auth"]["client_id_env"]
+    client_secret = cfg["auth"]["client_secret_env"]
 
     tile_size_km = cfg["tiles"]["tile_size_km"]
     tile_defs = cfg["tiles"]["tile_defs"]
@@ -251,40 +251,15 @@ def main_data_wrangler(config_path, client_id, client_secret):
         tile_id = int(t["id"])
         bbox = t["bbox"]
 
-        if tile_id == 16:
-            filename = teseachi_filename
-        else:
-            filename = tile_filename_template.format(id=tile_id)
-
+        filename = teseachi_filename if tile_id == 16 else tile_filename_template.format(id=tile_id)
         out_path = os.path.join(out_dir, filename)
 
         # We print what we process.
         print(f"[tile {i:02d}/{len(all_tiles):02d}] downloading tile_id={tile_id} bbox={bbox} -> {out_path}")
 
-        s2_data, s2_transform, s2_crs = s2_tiff(
-            oauth=oauth,
-            process_url=process_url,
-            bbox=bbox,
-            time_from=time_from,
-            time_to=time_to,
-            width_px=width_px,
-            height_px=height_px,
-            max_cloud_coverage=max_cloud_coverage,
-            mosaicking_order=mosaicking_order,
-            upsampling=upsampling,
-            downsampling=downsampling,
-        )
+        s2_data, s2_transform, s2_crs = s2_tiff(oauth=oauth, process_url=process_url, bbox=bbox, time_from=time_from, time_to=time_to, width_px=width_px, height_px=height_px, max_cloud_coverage=max_cloud_coverage, mosaicking_order=mosaicking_order, upsampling=upsampling, downsampling=downsampling)
 
-        dem_data, dem_transform, dem_crs = dem_tiff(
-            oauth=oauth,
-            process_url=process_url,
-            bbox=bbox,
-            width_px=width_px,
-            height_px=height_px,
-            dem_instance=dem_instance,
-            upsampling=upsampling,
-            downsampling=downsampling,
-        )
+        dem_data, dem_transform, dem_crs = dem_tiff(oauth=oauth, process_url=process_url, bbox=bbox, width_px=width_px, height_px=height_px, dem_instance=dem_instance, upsampling=upsampling, downsampling=downsampling)
 
         if s2_data.shape[1:] != dem_data.shape:
             raise RuntimeError(f"shape mismatch tile_id={tile_id}: s2={s2_data.shape} dem={dem_data.shape}")
