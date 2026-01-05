@@ -112,6 +112,27 @@ No parameters are hard-coded inside the scripts.
 
 ---
 
+## Dependencies
+
+- **Python**: 3.11.5 (packaged by Anaconda, Inc.)
+- **os**: built-in (no version)
+- **json**: 2.0.9
+- **time**: built-in (no version)
+- **csv**: 1.0
+- **math**: built-in (no version)
+- **requests**: 2.31.0
+- **requests-oauthlib**: 2.0.0
+- **oauthlib**: 3.3.1
+- **numpy**: 1.24.4
+- **rasterio**: 1.4.3
+- **GDAL / osgeo**: not installed
+- **matplotlib**: 3.7.2
+- **torch**: 2.5.1+cpu
+- **scikit-learn**: 1.3.0
+
+---
+
+
 ## How to Run
 
 ### 1. Clone the Repository
