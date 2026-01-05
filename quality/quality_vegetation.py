@@ -176,23 +176,24 @@ def dem_mean_for_bbox(oauth, process_url, bbox, coarse_px, dem_instance, upsampl
     return float(np.nanmean(dem_data))
 
 
-def main_pasture(config_path, client_id, client_secret):
+def main_pasture():
     """
     Computes pasture fractions and dem summaries and saves them as a csv.
 
     Args:
-        config_path (str): Path to configuration json.
-        client_id (str): OAuth client id.
-        client_secret (str): OAuth client secret.
+        None
 
     Returns:
         None
     """
     t0 = time.time()
-    cfg = read_json(config_path)
+    cfg = read_json("utilities/configuration.json")
 
     token_url = cfg["auth"]["token_url"]
     process_url = cfg["auth"]["process_url"]
+
+    client_id = cfg["auth"]["client_id_env"]
+    client_secret = cfg["auth"]["client_secret_env"]
 
     state = load_state_polygon(cfg)
     state_union = state.unary_union
