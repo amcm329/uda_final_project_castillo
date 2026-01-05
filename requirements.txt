@@ -1,1 +1,8 @@
-
+requests
+requests-oauthlib
+oauthlib
+numpy
+rasterio
+matplotlib
+torch
+scikit-learn
