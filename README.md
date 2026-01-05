@@ -132,12 +132,22 @@ No parameters are hard-coded inside the scripts.
 
 ---
 
-## How to Run
+## How to Run the Code
 
-### 1. Clone the Repository
+---
 
-git clone https://github.com/amcm329/uda_final_project_castillo.git
-cd uda_final_project_castillo
+We typically run the pipeline with **`python main.py`**. The script `main.py` accepts one optional positional argument, `task`, which selects **exactly one pipeline stage per execution**. If the argument is omitted, the default behavior is to execute the training stage, which is the **only non-secondary** component of the pipeline.
+
+### Valid commands
+- **`python main.py geo`** — executes `main_vegetation()` (secondary)
+- **`python main.py pasture`** — executes `main_pasture()` (secondary)
+- **`python main.py wrangler`** — executes `main_data_wrangler()` (secondary)
+- **`python main.py training`** — executes `main_training()` (non-secondary)
+- **`python main.py`** — executes `main_training()` by default
+
+The argument is intentionally single-stage. Each run of `main.py` executes one stage and then terminates. Running multiple stages requires multiple invocations of the script, one per stage, in sequence.
+
+---
 
 ### 2. Install Dependencies
 
