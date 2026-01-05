@@ -67,11 +67,9 @@ Contains all generated outputs from the pipeline:
 - Scatter plots and saved figures
 - Intermediate and final prediction artifacts
 
-### `processing/`
+### `modeling/`
 Contains the main executable scripts of the pipeline:
 - `data_wrangler.py`: downloads and prepares Sentinel-2 and DEM tiles
-- `pastizales.py`: computes natural pasture fractions and DEM summaries
-- `vegetation.py`: produces geographical tile and vegetation plots
 - `training.py`: runs the full two-stage learning pipeline (Stage A + Stage B)
 
 All scripts read parameters exclusively from the shared configuration file.
@@ -128,9 +126,11 @@ No parameters are hard-coded inside the scripts.
 - **matplotlib**: 3.7.2 — Plotting and visualization of results and maps.
 - **torch**: 2.5.1+cpu — Neural network models and tensor computations.
 - **scikit-learn**: 1.3.0 — Classical machine learning models and evaluation metrics.
+- **geopandas 1.0.1** — Geospatial tabular data handling with spatial operations.
+- **shapely 2.0.7** — Geometry objects and spatial predicates for vector data.
+- **cartopy 0.25.0** — Geospatial mapping and cartographic projections for plotting geographic data.
 
 ---
-
 
 ## How to Run
 
@@ -140,9 +140,14 @@ git clone https://github.com/amcm329/uda_final_project_castillo.git
 cd uda_final_project_castillo
 
 ### 2. Install Dependencies
-pip install -r requirements.txt
 
-System-level dependencies for geopandas, rasterio, and cartopy (GDAL, PROJ) must be available.
+Dependencies can be installed using the following command:
+
+```bash
+pip install -r requirements.txt
+```
+
+To avoid potential issues related to version compatibility, dependencies may also be installed individually if needed.
 
 ### 3. Set Authentication
 
