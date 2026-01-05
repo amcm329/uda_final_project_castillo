@@ -125,7 +125,6 @@ No parameters are hard-coded inside the scripts.
 - **oauthlib**: 3.3.1 — Low-level OAuth protocol implementation.
 - **numpy**: 1.24.4 — Numerical arrays and vectorized computations.
 - **rasterio**: 1.4.3 — Reading, writing, and processing geospatial raster data.
-- **GDAL / osgeo**: not installed — Not used; geospatial I/O handled via rasterio.
 - **matplotlib**: 3.7.2 — Plotting and visualization of results and maps.
 - **torch**: 2.5.1+cpu — Neural network models and tensor computations.
 - **scikit-learn**: 1.3.0 — Classical machine learning models and evaluation metrics.
