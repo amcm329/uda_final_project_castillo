@@ -98,7 +98,18 @@
 
   "ridge_alpha": 10000.0,
 
+  "fallback_grad_quantile": 0.90,
+  "f1_thresholds_to_report": [0.05, 0.10, 0.15],
+  "pred_thresholds_to_plot": [0.05, 0.10, 0.20],
+
+  "encoder_channels": [32, 64],
+  "decoder_fc_units": 4096,
+
+  "ridge_fit_intercept": true,
+  "use_standard_scaler": true,
+
   "device_preference": "auto"
 }
+
 
 }
