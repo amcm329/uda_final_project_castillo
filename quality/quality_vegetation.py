@@ -56,42 +56,34 @@ def load_inegi_natural_pasture(shp_paths, keywords_lower):
     Returns:
         GeoDataFrame: Merged pasture polygons in epsg:4326.
     """
-    def resolve_existing_path(p):
-        # We try the path as-is first.
-        candidates = [p]
+    gadm_zip = "https://geodata.ucdavis.edu/gadm/gadm4.1/shp/gadm41_MEX_shp.zip"
 
-        # We try common repo-relative locations.
-        here = os.path.dirname(os.path.abspath(__file__))
-        repo = os.path.dirname(here)
+    print("[inegi] downloading MC2020 land-cover zip into memory...")
+    zip_bytes = requests.get(gadm_zip, stream=False).content
 
-        candidates.append(os.path.join(here, p))
-        candidates.append(os.path.join(repo, p))
-        candidates.append(os.path.join(repo, "dataset", p))
-        candidates.append(os.path.join(repo, "quality", p))
-        candidates.append(os.path.join(repo, "data", p))
-
-        for c in candidates:
-            if os.path.exists(c):
-                return c
-
-        tried = "\n".join([f"  - {c}" for c in candidates])
-        raise FileNotFoundError(f"shapefile not found: {p}\nWe tried:\n{tried}")
+    vsimem_zip = "/vsimem/mc2020.zip"
+    gdal.FileFromMemBuffer(vsimem_zip, zip_bytes)
 
     parts = []
-    for p in shp_paths:
-        p_resolved = resolve_existing_path(p)
-        print(f"[inegi] reading {p_resolved} ...")
-        g = gpd.read_file(p_resolved)
+    for shp_name in shp_paths:
+        shp_path = f"/vsizip/{vsimem_zip}/{shp_name}"
+        print(f"[inegi] reading {shp_name} from memory...")
+
+        g = gpd.read_file(shp_path)
         if g.crs is None:
-            raise RuntimeError(f"{p_resolved} has no crs; set it before running")
+            raise RuntimeError(f"{shp_name} has no crs; set it before running")
+
         g = g.to_crs("EPSG:4326")
         g_past = filter_natural_pasture(g, keywords_lower)
-        print(f"[inegi] file={os.path.basename(p_resolved)} total={len(g)} pastizal_nat={len(g_past)}")
+
+        print(f"[inegi] file={shp_name} total={len(g)} pastizal_nat={len(g_past)}")
         if not g_past.empty:
             parts.append(g_past)
 
+    gdal.Unlink(vsimem_zip)
+
     if not parts:
-        raise RuntimeError("no 'natural pastures' polygons found in any inegi shapefile")
+        raise RuntimeError("no 'pastizales naturales' polygons found in any inegi shapefile")
 
     merged = gpd.GeoDataFrame(pd.concat(parts, ignore_index=True), crs="EPSG:4326")
     print(f"[inegi] merged pastizal_nat polygons: {len(merged)}")
