@@ -50,26 +50,48 @@ def load_inegi_natural_pasture(shp_paths, keywords_lower):
     Loads inegi shapefiles and filters them to natural pastures.
 
     Args:
-        shp_paths (list): List of shapefile paths.
+        shp_paths (list): List of shapefile paths (can be relative filenames).
         keywords_lower (list): Lowercased keywords to search.
 
     Returns:
         GeoDataFrame: Merged pasture polygons in epsg:4326.
     """
+    def resolve_existing_path(p):
+        # We try the path as-is first.
+        candidates = [p]
+
+        # We try common repo-relative locations.
+        here = os.path.dirname(os.path.abspath(__file__))
+        repo = os.path.dirname(here)
+
+        candidates.append(os.path.join(here, p))
+        candidates.append(os.path.join(repo, p))
+        candidates.append(os.path.join(repo, "dataset", p))
+        candidates.append(os.path.join(repo, "quality", p))
+        candidates.append(os.path.join(repo, "data", p))
+
+        for c in candidates:
+            if os.path.exists(c):
+                return c
+
+        tried = "\n".join([f"  - {c}" for c in candidates])
+        raise FileNotFoundError(f"shapefile not found: {p}\nWe tried:\n{tried}")
+
     parts = []
     for p in shp_paths:
-        print(f"[inegi] reading {p} ...")
-        g = gpd.read_file(p)
+        p_resolved = resolve_existing_path(p)
+        print(f"[inegi] reading {p_resolved} ...")
+        g = gpd.read_file(p_resolved)
         if g.crs is None:
-            raise RuntimeError(f"{p} has no crs; set it before running")
+            raise RuntimeError(f"{p_resolved} has no crs; set it before running")
         g = g.to_crs("EPSG:4326")
         g_past = filter_natural_pasture(g, keywords_lower)
-        print(f"[inegi] file={p} total={len(g)} pastizal_nat={len(g_past)}")
+        print(f"[inegi] file={os.path.basename(p_resolved)} total={len(g)} pastizal_nat={len(g_past)}")
         if not g_past.empty:
             parts.append(g_past)
 
     if not parts:
-        raise RuntimeError("no 'pastizales naturales' polygons found in any inegi shapefile")
+        raise RuntimeError("no 'natural pastures' polygons found in any inegi shapefile")
 
     merged = gpd.GeoDataFrame(pd.concat(parts, ignore_index=True), crs="EPSG:4326")
     print(f"[inegi] merged pastizal_nat polygons: {len(merged)}")
