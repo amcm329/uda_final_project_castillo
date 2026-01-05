@@ -41,15 +41,14 @@ The pipeline consists of four main stages:
 ## Repository Structure
 
 uda_final_project_castillo/
-|-- dataset/
-|-- outputs/
-|-- processing/
-|-- quality/
-|-- utilities/
-|-- README.md
-|-- requirements.txt
-|-- LICENSE
-
+├── dataset/
+├── outputs/
+├── processing/
+├── quality/
+├── utilities/
+├── README.md
+├── requirements.txt
+└── LICENSE
 
 ---
 
