@@ -614,9 +614,9 @@ def resolve_device(device_preference):
     return "cuda" if torch.cuda.is_available() else "cpu"
 
 
-def main_training(config_path):
+def main_training():
     t0_all = time.time()
-    cfg = read_json(config_path)
+    cfg = read_json("utilites/configuration.json")
 
     tr = cfg["training"]
 
@@ -833,8 +833,3 @@ def main_training(config_path):
 
     print(f"[Time] Metrics/plots elapsed: {format_seconds(time.time() - t0)}")
     print(f"\n[Time] Total elapsed: {format_seconds(time.time() - t0_all)}")
-
-
-if __name__ == "__main__":
-    config_path = os.getenv("config_path", "configuration.json")
-    main_training(config_path=config_path)
