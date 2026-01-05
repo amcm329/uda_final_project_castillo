@@ -1,7 +1,7 @@
 # Architecture proposed. 
-
 import csv
 import math 
+import time
 
 import rasterio
 import numpy as np
