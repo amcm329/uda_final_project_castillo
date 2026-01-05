@@ -40,6 +40,7 @@ The pipeline consists of four main stages:
 
 ## Repository Structure
 
+```bash
 uda_final_project_castillo/
 ├── dataset/
 ├── outputs/
@@ -49,6 +50,7 @@ uda_final_project_castillo/
 ├── README.md
 ├── requirements.txt
 └── LICENSE
+```
 
 ---
 
