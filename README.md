@@ -153,8 +153,8 @@ To avoid potential issues related to version compatibility, dependencies may als
 
 Export Copernicus credentials as environment variables referenced by the configuration file.
 
-export CLIENT_ID=your_client_id
-export CLIENT_SECRET=your_client_secret
+- export CLIENT_ID=your_client_id
+- export CLIENT_SECRET=your_client_secret
 
 These credentials are shared with the evaluator in a private message.
 
