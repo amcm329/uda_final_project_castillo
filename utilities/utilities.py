@@ -1,4 +1,4 @@
-# We define utilities. 
+# We define Utilities (generic functions relevant to all sections in this code).
 import os
 import csv
 import rasterio
