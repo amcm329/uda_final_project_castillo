@@ -12,9 +12,9 @@ from quality.quality_geographical_tiles import *
 
 if __name__ == "__main__":
     
-    main_vegetation()
+    #main_vegetation()
 
-    #main_pasture()
+    main_pasture()
 
     #main_data_wrangler()
 
