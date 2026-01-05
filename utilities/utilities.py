@@ -10,6 +10,7 @@ from osgeo import gdal
 from requests_oauthlib import OAuth2Session
 from oauthlib.oauth2 import BackendApplicationClient
 
+
 def format_seconds(seconds):
     """
     Formats elapsed seconds into a human-readable string.
