@@ -615,6 +615,16 @@ def resolve_device(device_preference):
 
 
 def main_training():
+    """
+    Runs the full two-stage pipeline: extracts patches from tiles, trains Stage A (self-supervised edge task),
+    extracts embeddings, trains Stage B (ridge regression on proxy biomass), and saves plots and metrics.
+
+    Args:
+        config_path (str): Path to configuration json.
+
+    Returns:
+        None
+    """
     t0_all = time.time()
     cfg = read_json("utilities/configuration.json")
 
