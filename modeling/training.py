@@ -121,7 +121,7 @@ def compute_ndvi_from_patch(patch, idx_red=1, idx_nir=5, eps=1e-6):
     return ndvi.astype(np.float32)
 
 
-def canny_edges(gray01, sigma=1.0, low_threshold=0.1, high_threshold=0.3):
+def canny_edges(gray01, sigma=1.0, low_threshold=0.1, high_threshold=0.3, fallback_grad_quantile=0.90):
     """
     Computes a binary Canny edge map from a grayscale image.
 
@@ -130,6 +130,7 @@ def canny_edges(gray01, sigma=1.0, low_threshold=0.1, high_threshold=0.3):
         sigma (float): Canny smoothing parameter.
         low_threshold (float): Lower hysteresis threshold (0..1).
         high_threshold (float): Upper hysteresis threshold (0..1).
+        fallback_grad_quantile (float): Quantile for gradient threshold in fallback edge map.
 
     Returns:
         np.ndarray: Binary edge map of shape (H, W) with values in {0,1}.
@@ -145,7 +146,7 @@ def canny_edges(gray01, sigma=1.0, low_threshold=0.1, high_threshold=0.3):
         gx[:, 1:-1] = gray01[:, 2:] - gray01[:, :-2]
         gy[1:-1, :] = gray01[2:, :] - gray01[:-2, :]
         mag = np.sqrt(gx * gx + gy * gy)
-        thr = float(np.quantile(mag, 0.90))
+        thr = float(np.quantile(mag, float(fallback_grad_quantile)))
         edges = (mag >= thr).astype(np.uint8)
         return edges
 
@@ -214,14 +215,15 @@ def spearman_corr(x, y):
 # ============================================================
 
 class TinyCnnEncoder(nn.Module):
-    def __init__(self, in_channels, emb_dim=64):
+    def __init__(self, in_channels, emb_dim=64, encoder_channels=(32, 64)):
         super().__init__()
-        self.conv1 = nn.Conv2d(in_channels, 32, kernel_size=3, stride=1, padding=1)
-        self.conv2 = nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=1)
+        c1, c2 = int(encoder_channels[0]), int(encoder_channels[1])
+        self.conv1 = nn.Conv2d(in_channels, c1, kernel_size=3, stride=1, padding=1)
+        self.conv2 = nn.Conv2d(c1, c2, kernel_size=3, stride=1, padding=1)
         self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
         self.emb_dim = emb_dim
 
-        base_dim = 64
+        base_dim = c2
         if emb_dim != base_dim:
             self.proj = nn.Linear(base_dim, emb_dim)
         else:
@@ -240,11 +242,11 @@ class TinyCnnEncoder(nn.Module):
 
 
 class LightEdgeDecoder(nn.Module):
-    def __init__(self, emb_dim=64, out_h=96, out_w=96):
+    def __init__(self, emb_dim=64, out_h=96, out_w=96, decoder_fc_units=4096):
         super().__init__()
         self.out_h = out_h
         self.out_w = out_w
-        self.fc = nn.Linear(emb_dim, 4096)
+        self.fc = nn.Linear(emb_dim, int(decoder_fc_units))
         self.conv = nn.Conv2d(1, 1, kernel_size=3, stride=1, padding=1)
 
     def forward(self, z):
@@ -257,10 +259,10 @@ class LightEdgeDecoder(nn.Module):
 
 
 class SslEdgeModel(nn.Module):
-    def __init__(self, in_channels, emb_dim=64, patch_size=96):
+    def __init__(self, in_channels, emb_dim=64, patch_size=96, encoder_channels=(32, 64), decoder_fc_units=4096):
         super().__init__()
-        self.encoder = TinyCnnEncoder(in_channels=in_channels, emb_dim=emb_dim)
-        self.decoder = LightEdgeDecoder(emb_dim=emb_dim, out_h=patch_size, out_w=patch_size)
+        self.encoder = TinyCnnEncoder(in_channels=in_channels, emb_dim=emb_dim, encoder_channels=encoder_channels)
+        self.decoder = LightEdgeDecoder(emb_dim=emb_dim, out_h=patch_size, out_w=patch_size, decoder_fc_units=decoder_fc_units)
 
     def forward(self, x):
         z = self.encoder(x)
@@ -273,11 +275,12 @@ class SslEdgeModel(nn.Module):
 # ============================================================
 
 class PatchSslDataset(Dataset):
-    def __init__(self, patches_chw, canny_sigma, canny_low, canny_high):
+    def __init__(self, patches_chw, canny_sigma, canny_low, canny_high, fallback_grad_quantile=0.90):
         self.patches = patches_chw
         self.canny_sigma = canny_sigma
         self.canny_low = canny_low
         self.canny_high = canny_high
+        self.fallback_grad_quantile = fallback_grad_quantile
 
     def __len__(self):
         return len(self.patches)
@@ -285,7 +288,13 @@ class PatchSslDataset(Dataset):
     def __getitem__(self, idx):
         patch = self.patches[idx]
         gray = compute_ndvi_from_patch(patch)
-        edges = canny_edges(gray, sigma=self.canny_sigma, low_threshold=self.canny_low, high_threshold=self.canny_high)
+        edges = canny_edges(
+            gray,
+            sigma=self.canny_sigma,
+            low_threshold=self.canny_low,
+            high_threshold=self.canny_high,
+            fallback_grad_quantile=self.fallback_grad_quantile,
+        )
 
         x = torch.from_numpy(patch).float()
         y = torch.from_numpy(edges[None, :, :]).float()
@@ -422,7 +431,7 @@ def train_stage_a_ssl(model, loader, device, epochs, lr, plot_dir, weight_decay,
     return {"loss": loss_hist, "f1": f1_hist}
 
 
-def visualize_stage_a_samples(model, patches, device, plot_dir, canny_sigma, canny_low, canny_high, n=3, pred_threshold=0.25):
+def visualize_stage_a_samples(model, patches, device, plot_dir, canny_sigma, canny_low, canny_high, n=3, pred_threshold=0.25, fallback_grad_quantile=0.90):
     """
     Plots a few sample inputs with their edge targets and model predictions.
 
@@ -436,6 +445,7 @@ def visualize_stage_a_samples(model, patches, device, plot_dir, canny_sigma, can
         canny_high (float): Upper hysteresis threshold (0..1).
         n (int): Number of samples to plot.
         pred_threshold (float): Probability threshold for predicted edges.
+        fallback_grad_quantile (float): Quantile for fallback gradient edges.
 
     Returns:
         None: This function saves figures.
@@ -448,7 +458,13 @@ def visualize_stage_a_samples(model, patches, device, plot_dir, canny_sigma, can
     for k, idx in enumerate(idxs, start=1):
         patch = patches[idx]
         gray = compute_ndvi_from_patch(patch)
-        target = canny_edges(gray, sigma=canny_sigma, low_threshold=canny_low, high_threshold=canny_high)
+        target = canny_edges(
+            gray,
+            sigma=canny_sigma,
+            low_threshold=canny_low,
+            high_threshold=canny_high,
+            fallback_grad_quantile=fallback_grad_quantile,
+        )
 
         xb = torch.from_numpy(patch[None, :, :, :]).float().to(device)
         with torch.no_grad():
@@ -539,7 +555,7 @@ def build_stage_b_training_data(embeddings_by_tile, proxy_map, train_tile_ids):
     return X, y
 
 
-def train_stage_b_ridge(X_train, y_train, alpha):
+def train_stage_b_ridge(X_train, y_train, alpha, use_standard_scaler=True, ridge_fit_intercept=True):
     """
     Trains Ridge regression for Stage B (embedding -> biomass proxy).
 
@@ -547,11 +563,16 @@ def train_stage_b_ridge(X_train, y_train, alpha):
         X_train (np.ndarray): Training embeddings of shape (N, D).
         y_train (np.ndarray): Training targets of shape (N,).
         alpha (float): Ridge regularization strength.
+        use_standard_scaler (bool): Whether to use StandardScaler before Ridge.
+        ridge_fit_intercept (bool): Whether Ridge fits an intercept.
 
     Returns:
-        object: Trained sklearn pipeline (StandardScaler -> Ridge).
+        object: Trained sklearn pipeline.
     """
-    model = make_pipeline(StandardScaler(), Ridge(alpha=alpha, fit_intercept=True, random_state=0))
+    if bool(use_standard_scaler):
+        model = make_pipeline(StandardScaler(), Ridge(alpha=alpha, fit_intercept=bool(ridge_fit_intercept), random_state=0))
+    else:
+        model = Ridge(alpha=alpha, fit_intercept=bool(ridge_fit_intercept), random_state=0)
     model.fit(X_train, y_train)
     return model
 
@@ -649,6 +670,13 @@ def main_training():
     canny_low = float(tr["canny_low"])
     canny_high = float(tr["canny_high"])
 
+    # NEW: read additional hyperparameters from JSON (no change to approach)
+    fallback_grad_quantile = float(tr.get("fallback_grad_quantile", 0.90))
+    encoder_channels = tr.get("encoder_channels", [32, 64])
+    decoder_fc_units = int(tr.get("decoder_fc_units", 4096))
+    ridge_fit_intercept = bool(tr.get("ridge_fit_intercept", True))
+    use_standard_scaler = bool(tr.get("use_standard_scaler", True))
+
     batch_size = int(tr["batch_size"])
     num_workers = int(tr["num_workers"])
     shuffle = bool(tr["shuffle"])
@@ -679,7 +707,7 @@ def main_training():
 
     proxy_map = load_proxy_csv(proxy_csv_path)
 
-    train_patches, train_tile_patch_index = build_training_patches(train_tiles=train_tiles, patch_size=patch_size,stride=stride)
+    train_patches, train_tile_patch_index = build_training_patches(train_tiles=train_tiles, patch_size=patch_size, stride=stride)
 
     teseachi_patches = build_teseachi_patches(teseachi_path=teseachi_path, patch_size=patch_size, stride=stride)
 
@@ -705,16 +733,49 @@ def main_training():
     t0 = time.time()
     print("\n[Subsection] Stage A: Self-supervised Tiny CNN (Canny edge task)")
 
-    ssl_dataset = PatchSslDataset(patches_chw=train_patches, canny_sigma=canny_sigma, canny_low=canny_low, canny_high=canny_high
-                                 )
+    ssl_dataset = PatchSslDataset(
+        patches_chw=train_patches,
+        canny_sigma=canny_sigma,
+        canny_low=canny_low,
+        canny_high=canny_high,
+        fallback_grad_quantile=fallback_grad_quantile,
+    )
     ssl_loader = DataLoader(ssl_dataset, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers)
 
     in_channels = int(train_patches[0].shape[0])
-    ssl_model = SslEdgeModel(in_channels=in_channels, emb_dim=emb_dim, patch_size=patch_size)
+    ssl_model = SslEdgeModel(
+        in_channels=in_channels,
+        emb_dim=emb_dim,
+        patch_size=patch_size,
+        encoder_channels=encoder_channels,
+        decoder_fc_units=decoder_fc_units,
+    )
 
-    hist = train_stage_a_ssl(model=ssl_model, loader=ssl_loader, device=device, epochs=epochs, lr=lr, plot_dir=stage_a_plot_dir, weight_decay=weight_decay, pos_weight=pos_weight, grad_clip_max_norm=grad_clip_max_norm, f1_threshold=f1_threshold)
+    hist = train_stage_a_ssl(
+        model=ssl_model,
+        loader=ssl_loader,
+        device=device,
+        epochs=epochs,
+        lr=lr,
+        plot_dir=stage_a_plot_dir,
+        weight_decay=weight_decay,
+        pos_weight=pos_weight,
+        grad_clip_max_norm=grad_clip_max_norm,
+        f1_threshold=f1_threshold,
+    )
 
-    visualize_stage_a_samples(model=ssl_model, patches=train_patches, device=device, plot_dir=stage_a_plot_dir, canny_sigma=canny_sigma, canny_low=canny_low, canny_high=canny_high, n=3, pred_threshold=pred_threshold)
+    visualize_stage_a_samples(
+        model=ssl_model,
+        patches=train_patches,
+        device=device,
+        plot_dir=stage_a_plot_dir,
+        canny_sigma=canny_sigma,
+        canny_low=canny_low,
+        canny_high=canny_high,
+        n=3,
+        pred_threshold=pred_threshold,
+        fallback_grad_quantile=fallback_grad_quantile,
+    )
 
     print(f"[Time] Stage A training elapsed: {format_seconds(time.time() - t0)}")
 
@@ -747,7 +808,13 @@ def main_training():
     train_tile_ids = [tid for tid, _ in train_tiles]
     X_train, y_train = build_stage_b_training_data(embeddings_by_tile=embeddings_by_tile, proxy_map=proxy_map, train_tile_ids=train_tile_ids)
 
-    ridge = train_stage_b_ridge(X_train=X_train, y_train=y_train, alpha=ridge_alpha)
+    ridge = train_stage_b_ridge(
+        X_train=X_train,
+        y_train=y_train,
+        alpha=ridge_alpha,
+        use_standard_scaler=use_standard_scaler,
+        ridge_fit_intercept=ridge_fit_intercept,
+    )
     yhat_teseachi = ridge.predict(z_teseachi).astype(np.float32)
 
     print(f"We trained Ridge on X shape {X_train.shape} with y shape {y_train.shape}.")
