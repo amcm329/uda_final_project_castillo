@@ -74,7 +74,7 @@ def load_inegi_natural_pasture(shp_paths, keywords_lower):
     shp_file = os.path.join(extracted_root, "chihuahua_tiles.shp")
 
     try:
-        print(f"[inegi] reading {shp_file} from downloaded repo...")
+        print(f"[inegi] reading {shp_file} ...")
 
         g = gpd.read_file(shp_file)
         if g.crs is None:
