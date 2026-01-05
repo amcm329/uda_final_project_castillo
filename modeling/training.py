@@ -267,56 +267,39 @@ class SslEdgeModel(nn.Module):
 
 def build_stage_b_training_data(embeddings_by_tile, proxy_map, train_tile_ids):
     """
-    Builds Stage B training data using tile-level aggregation (Option 1).
-
-    Each tile contributes exactly ONE training sample by averaging all its
-    patch embeddings into a single feature vector. This avoids treating
-    patches as independent labeled samples when only tile-level proxy labels
-    are available.
+    Builds Stage B regression training data by replicating tile-level proxy labels to patches.
 
     Args:
-        embeddings_by_tile (dict):
-            Mapping tile_id -> np.ndarray of shape (N_patches, D),
-            where D is the embedding dimension.
-        proxy_map (dict):
-            Mapping tile_id -> scalar biomass proxy value.
-        train_tile_ids (list[int]):
-            List of tile IDs used for training.
+        embeddings_by_tile (dict): tile_id -> np.ndarray of shape (N_patches, D).
+        proxy_map (dict): tile_id -> biomass proxy (float).
+        train_tile_ids (list[int]): Training tile IDs (1..15).
 
     Returns:
-        X (np.ndarray):
-            Array of shape (N_tiles, D), one row per tile.
-        y (np.ndarray):
-            Array of shape (N_tiles,), tile-level proxy targets.
+        tuple[np.ndarray, np.ndarray]: (X, y)
+            X shape (N_total_patches, D)
+            y shape (N_total_patches,)
     """
-    X = np.vstack([embeddings_by_tile[tid].mean(axis=0, keepdims=True) for tid in train_tile_ids])
+    X = np.vstack([
+        embeddings_by_tile[tid].mean(axis=0, keepdims=True)
+        for tid in train_tile_ids
+    ])
     y = np.array([float(proxy_map[tid]) for tid in train_tile_ids], dtype=np.float32)
     return X, y
 
 
 def train_stage_b_ridge(X_train, y_train, alpha, use_standard_scaler=True, ridge_fit_intercept=True):
     """
-    Trains a Ridge regression model for Stage B (Option 1).
-
-    The model learns a mapping from tile-level embeddings to tile-level
-    biomass proxy values. Optional standardization is applied before Ridge
-    to stabilize optimization when embedding dimensions have different scales.
+    Trains Ridge regression for Stage B (embedding -> biomass proxy).
 
     Args:
-        X_train (np.ndarray):
-            Training features of shape (N_tiles, D).
-        y_train (np.ndarray):
-            Training targets of shape (N_tiles,).
-        alpha (float):
-            Ridge regularization strength.
-        use_standard_scaler (bool):
-            Whether to apply StandardScaler before Ridge.
-        ridge_fit_intercept (bool):
-            Whether the Ridge model should fit an intercept term.
+        X_train (np.ndarray): Training embeddings of shape (N, D).
+        y_train (np.ndarray): Training targets of shape (N,).
+        alpha (float): Ridge regularization strength.
+        use_standard_scaler (bool): Whether to use StandardScaler before Ridge.
+        ridge_fit_intercept (bool): Whether Ridge fits an intercept.
 
     Returns:
-        model:
-            Trained sklearn Ridge model or Pipeline(StandardScaler + Ridge).
+        object: Trained sklearn pipeline.
     """
     model = make_pipeline(
         StandardScaler(),
@@ -352,55 +335,6 @@ def predict_stage_b_tile_level(ridge_model, z_teseachi):
     """
     y_tile = ridge_model.predict(z_teseachi.mean(axis=0, keepdims=True))[0]
     return np.full((z_teseachi.shape[0],), y_tile, dtype=np.float32)
-
-
-# ============================================================
-# helpers required by main_training
-# ============================================================
-
-def extract_patch_embeddings(encoder, patches, device, batch_size):
-    encoder.eval()
-    encoder = encoder.to(device)
-    z_all = []
-    for i in range(0, len(patches), batch_size):
-        xb = torch.from_numpy(np.stack(patches[i:i + batch_size], axis=0)).float().to(device)
-        with torch.no_grad():
-            z_all.append(encoder(xb).cpu().numpy())
-    return np.vstack(z_all) if z_all else np.zeros((0, encoder.emb_dim), dtype=np.float32)
-
-
-def evaluate_stage_b(y_true, y_pred):
-    r2 = float(r2_score(y_true, y_pred))
-    rmse = float(math.sqrt(mean_squared_error(y_true, y_pred)))
-    rho = float(spearman_corr(y_pred, y_true))
-    return {"r2": r2, "rmse": rmse, "spearman": rho}
-
-
-def plot_stage_b_scatter(y_true, y_pred, plot_path, title):
-    plt.figure()
-    plt.scatter(y_true, y_pred, s=10)
-    plt.xlabel("True biomass")
-    plt.ylabel("Predicted biomass")
-    plt.title(title)
-    plt.tight_layout()
-    plt.savefig(plot_path)
-    plt.close()
-
-
-def resolve_device(device_preference):
-    pref = str(device_preference).strip().lower()
-    if pref == "cpu":
-        return "cpu"
-    if pref == "cuda":
-        return "cuda" if torch.cuda.is_available() else "cpu"
-    return "cuda" if torch.cuda.is_available() else "cpu"
-
-
-def format_seconds(seconds):
-    if seconds < 60:
-        return f"{seconds:.2f}s"
-    m = int(seconds // 60)
-    return f"{m}m {seconds - 60*m:.2f}s"
 
 
 # ============================================================
@@ -455,23 +389,16 @@ def main_training():
     X_train, y_train = build_stage_b_training_data(embeddings_by_tile, proxy_map, train_tile_ids)
 
     ridge = train_stage_b_ridge(X_train, y_train, ridge_alpha, use_standard_scaler, ridge_fit_intercept)
-    yhat_teseachi = predict_stage_b_tile_level(ridge, z_teseachi)
+    yhat_tile = ridge.predict(z_teseachi.mean(axis=0, keepdims=True))[0]
+    yhat_teseachi = np.full((z_teseachi.shape[0],), yhat_tile, dtype=np.float32)
 
     teseachi_truth_path = os.path.join(proxy_dir, tr["teseachi_truth_csv_name"])
     if os.path.exists(teseachi_truth_path):
-        y_true_teseachi, yhat_use = load_teseachi_truth_and_align(
-            teseachi_truth_csv_path=teseachi_truth_path,
-            yhat_teseachi=yhat_teseachi,
-        )
+        y_true_teseachi, yhat_use = load_teseachi_truth_and_align(teseachi_truth_csv_path=teseachi_truth_path, yhat_teseachi=yhat_teseachi)
         m = evaluate_stage_b(y_true_teseachi, yhat_use)
         print(f"[Stage B Metric] R2 on Teseachi (higher is better): {m['r2']:.4f}")
         print(f"[Stage B Metric] RMSE on Teseachi (lower is better): {m['rmse']:.4f}")
         print(f"[Stage B Metric] Spearman rho on Teseachi (higher is better): {m['spearman']:.4f}")
-        plot_stage_b_scatter(
-            y_true_teseachi,
-            yhat_use,
-            os.path.join(stage_b_plot_dir, "stage_b_teseachi_scatter.png"),
-            "Stage B: Predicted vs proxy biomass (Teseachi)",
-        )
+        plot_stage_b_scatter(y_true_teseachi, yhat_use, os.path.join(stage_b_plot_dir, "stage_b_teseachi_scatter.png"), "Stage B: Predicted vs proxy biomass (Teseachi)")
 
     print(f"\n[Time] Total elapsed: {format_seconds(time.time() - t0_all)}")
