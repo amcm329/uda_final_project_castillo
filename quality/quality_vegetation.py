@@ -5,11 +5,15 @@ import time
 
 import requests
 
+import zipfile
+import shutil
+import urllib.request
+
 import numpy as np
 import pandas as pd
 import geopandas as gpd
 from shapely.geometry import box
-
+ 
 import rasterio
 from rasterio.io import MemoryFile
 
@@ -56,14 +60,6 @@ def load_inegi_natural_pasture(shp_paths, keywords_lower):
     Returns:
         GeoDataFrame: Merged pasture polygons in epsg:4326.
     """
-    import os
-    import zipfile
-    import shutil
-    import urllib.request
-
-    import geopandas as gpd
-    import pandas as pd
-
     repo_out_dir = "special_repo_for_shape"
     repo_zip_url = "https://github.com/amcm329/special_repo_for_shape/archive/refs/heads/main.zip"
 
