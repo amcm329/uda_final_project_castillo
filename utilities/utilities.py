@@ -1,3 +1,5 @@
+# We define utilities. 
+
 import os
 import csv
 import rasterio
@@ -8,10 +10,6 @@ from osgeo import gdal
 
 from oauthlib.oauth2 import BackendApplicationClient
 from requests_oauthlib import OAuth2Session
-
-# ============================================================
-# We define utilities (timing)
-# ============================================================
 
 def format_seconds(seconds):
     """
@@ -89,6 +87,28 @@ def load_gadm_level1_in_memory(gadm_zip, level1_member):
     # We cleanup in-memory files.
     gdal.Unlink(vsimem_zip)
     return gdf
+
+
+def load_state_polygon(cfg):
+    """
+    Loads the target state polygon from gadm.
+
+    Args:
+        cfg (dict): Configuration dictionary.
+
+    Returns:
+        GeoDataFrame: State polygon in epsg:4326.
+    """
+    gadm_zip = cfg["gadm"]["gadm_zip"]
+    level1_member = cfg["gadm"]["level1_member"]
+    state_name_field = cfg["gadm"]["state_name_field"]
+    state_name_value = cfg["gadm"]["state_name_value"]
+
+    mex = load_gadm_level1_in_memory(gadm_zip, level1_member)
+    state = mex[mex[state_name_field] == state_name_value].to_crs("EPSG:4326")
+    if state.empty:
+        raise RuntimeError(f"could not find state={state_name_value} in gadm level-1")
+    return state
 
 
 def read_tile_tif(filepath):
