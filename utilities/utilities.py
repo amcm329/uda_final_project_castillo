@@ -1,5 +1,4 @@
 # We define utilities. 
-
 import os
 import csv
 import rasterio
@@ -8,8 +7,8 @@ import numpy as np
 import requests
 from osgeo import gdal
 
-from oauthlib.oauth2 import BackendApplicationClient
 from requests_oauthlib import OAuth2Session
+from oauthlib.oauth2 import BackendApplicationClient
 
 def format_seconds(seconds):
     """
