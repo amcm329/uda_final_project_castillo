@@ -602,7 +602,7 @@ def plot_stage_b_scatter(y_true, y_pred, plot_path, title):
 # We define a main runner in the exact pipeline order
 # ============================================================
 
-def main():
+def main_training():
     t0_all = time.time()
 
     dataset_dir = "dataset"
@@ -768,7 +768,3 @@ def main():
 
     print(f"[Time] Metrics/plots elapsed: {format_seconds(time.time() - t0)}")
     print(f"\n[Time] Total elapsed: {format_seconds(time.time() - t0_all)}")
-
-
-if __name__ == "__main__":
-    main()
