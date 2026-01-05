@@ -58,16 +58,10 @@ def load_inegi_natural_pasture(shp_paths, keywords_lower):
     """
     gadm_zip = "https://geodata.ucdavis.edu/gadm/gadm4.1/shp/gadm41_MEX_shp.zip"
 
-    print("[inegi] downloading MC2020 land-cover zip into memory...")
-    zip_bytes = requests.get(gadm_zip, stream=False).content
-
-    vsimem_zip = "/vsimem/mc2020.zip"
-    gdal.FileFromMemBuffer(vsimem_zip, zip_bytes)
-
     parts = []
     for shp_name in shp_paths:
-        shp_path = f"/vsizip/{vsimem_zip}/{shp_name}"
-        print(f"[inegi] reading {shp_name} from memory...")
+        shp_path = f"zip+{gadm_zip}!{shp_name}"
+        print(f"[inegi] reading {shp_name} from remote zip...")
 
         g = gpd.read_file(shp_path)
         if g.crs is None:
@@ -80,14 +74,13 @@ def load_inegi_natural_pasture(shp_paths, keywords_lower):
         if not g_past.empty:
             parts.append(g_past)
 
-    gdal.Unlink(vsimem_zip)
-
     if not parts:
         raise RuntimeError("no 'pastizales naturales' polygons found in any inegi shapefile")
 
     merged = gpd.GeoDataFrame(pd.concat(parts, ignore_index=True), crs="EPSG:4326")
     print(f"[inegi] merged pastizal_nat polygons: {len(merged)}")
     return merged
+
 
 
 def pasture_fraction_for_tile(tile_poly, pastizal_eq, eq_area_crs):
