@@ -65,42 +65,33 @@ def load_inegi_natural_pasture(shp_paths, keywords_lower):
 
     os.makedirs(repo_out_dir, exist_ok=True)
 
-    zip_path = os.path.join(repo_out_dir, "repo_main.zip")
-    if not os.path.exists(zip_path):
-        with urllib.request.urlopen(repo_zip_url) as r:
-            with open(zip_path, "wb") as f:
-                f.write(r.read())
-
-    with zipfile.ZipFile(zip_path) as z:
-        z.extractall(repo_out_dir)
+    with urllib.request.urlopen(repo_zip_url) as r:
+        with zipfile.ZipFile(io.BytesIO(r.read())) as z:
+            z.extractall(repo_out_dir)
 
     extracted_root = os.path.join(repo_out_dir, "special_repo_for_shape-main")
     shp_file = os.path.join(extracted_root, "chihuahua_tiles.shp")
 
-    parts = []
     try:
         print(f"[inegi] reading {shp_file} from downloaded repo...")
 
         g = gpd.read_file(shp_file)
         if g.crs is None:
-            raise RuntimeError("chihuahua_tiles.shp has no crs; set it before running")
+            raise RuntimeError("chihuahua_tiles has no crs")
 
         g = g.to_crs("EPSG:4326")
         g_past = filter_natural_pasture(g, keywords_lower)
 
-        print(f"[inegi] file=chihuahua_tiles.shp total={len(g)} pastizal_nat={len(g_past)}")
+        print(f"[inegi] file=chihuahua_tiles total={len(g)} pastizal_nat={len(g_past)}")
         if g_past.empty:
-            raise RuntimeError("no 'pastizales naturales' polygons found in chihuahua_tiles.shp")
+            raise RuntimeError("no 'pastizales naturales' polygons found")
 
-        parts.append(g_past)
-
-        merged = gpd.GeoDataFrame(pd.concat(parts, ignore_index=True), crs="EPSG:4326")
+        merged = gpd.GeoDataFrame(pd.concat([g_past], ignore_index=True), crs="EPSG:4326")
         print(f"[inegi] merged pastizal_nat polygons: {len(merged)}")
         return merged
 
     finally:
-        if os.path.isdir(repo_out_dir):
-            shutil.rmtree(repo_out_dir, ignore_errors=True)
+        shutil.rmtree(repo_out_dir, ignore_errors=True)
 
 
 def pasture_fraction_for_tile(tile_poly, pasture_eq, eq_area_crs):
