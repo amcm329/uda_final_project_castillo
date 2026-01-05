@@ -603,12 +603,11 @@ def plot_stage_b_scatter(y_true, y_pred, plot_path, title):
 # ============================================================
 # We define a main runner in the exact pipeline order
 # ============================================================
-
 def main_training():
     t0_all = time.time()
 
-    dataset_dir = "dataset"
-    proxy_dir = "proxy_biomass"
+    dataset_dir = "dataset\\tiles"
+    proxy_dir = "dataset\\proxy_biomass"
     proxy_csv_path = os.path.join(proxy_dir, "proxy_biomass.csv")
 
     output_dir = "outputs"
@@ -627,7 +626,7 @@ def main_training():
     canny_high = 0.15
 
     batch_size = 128
-    epochs = 30
+    epochs = 100
     lr = 3e-4
     weight_decay = 1e-4
     grad_clip_max_norm = 1.0
