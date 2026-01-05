@@ -56,40 +56,64 @@ def load_inegi_natural_pasture(shp_paths, keywords_lower):
     Returns:
         GeoDataFrame: Merged pasture polygons in epsg:4326.
     """
-    gadm_zip = "https://geodata.ucdavis.edu/gadm/gadm4.1/shp/gadm41_MEX_shp.zip"
+    import os
+    import zipfile
+    import shutil
+    import urllib.request
+
+    import geopandas as gpd
+    import pandas as pd
+
+    repo_out_dir = "special_repo_for_shape"
+    repo_zip_url = "https://github.com/amcm329/special_repo_for_shape/archive/refs/heads/main.zip"
+
+    os.makedirs(repo_out_dir, exist_ok=True)
+
+    zip_path = os.path.join(repo_out_dir, "repo_main.zip")
+    if not os.path.exists(zip_path):
+        with urllib.request.urlopen(repo_zip_url) as r:
+            with open(zip_path, "wb") as f:
+                f.write(r.read())
+
+    with zipfile.ZipFile(zip_path) as z:
+        z.extractall(repo_out_dir)
+
+    extracted_root = os.path.join(repo_out_dir, "special_repo_for_shape-main")
+    shp_file = os.path.join(extracted_root, "chihuahua_tiles.shp")
 
     parts = []
-    for shp_name in shp_paths:
-        shp_path = f"zip+{gadm_zip}!{shp_name}"
-        print(f"[inegi] reading {shp_name} from remote zip...")
+    try:
+        print(f"[inegi] reading {shp_file} from downloaded repo...")
 
-        g = gpd.read_file(shp_path)
+        g = gpd.read_file(shp_file)
         if g.crs is None:
-            raise RuntimeError(f"{shp_name} has no crs; set it before running")
+            raise RuntimeError("chihuahua_tiles.shp has no crs; set it before running")
 
         g = g.to_crs("EPSG:4326")
         g_past = filter_natural_pasture(g, keywords_lower)
 
-        print(f"[inegi] file={shp_name} total={len(g)} pastizal_nat={len(g_past)}")
-        if not g_past.empty:
-            parts.append(g_past)
+        print(f"[inegi] file=chihuahua_tiles.shp total={len(g)} pastizal_nat={len(g_past)}")
+        if g_past.empty:
+            raise RuntimeError("no 'pastizales naturales' polygons found in chihuahua_tiles.shp")
 
-    if not parts:
-        raise RuntimeError("no 'pastizales naturales' polygons found in any inegi shapefile")
+        parts.append(g_past)
 
-    merged = gpd.GeoDataFrame(pd.concat(parts, ignore_index=True), crs="EPSG:4326")
-    print(f"[inegi] merged pastizal_nat polygons: {len(merged)}")
-    return merged
+        merged = gpd.GeoDataFrame(pd.concat(parts, ignore_index=True), crs="EPSG:4326")
+        print(f"[inegi] merged pastizal_nat polygons: {len(merged)}")
+        return merged
+
+    finally:
+        if os.path.isdir(repo_out_dir):
+            shutil.rmtree(repo_out_dir, ignore_errors=True)
 
 
-
-def pasture_fraction_for_tile(tile_poly, pastizal_eq, eq_area_crs):
+def pasture_fraction_for_tile(tile_poly, pasture_eq, eq_area_crs):
     """
     Computes the fraction of tile area covered by natural pasture polygons.
 
     Args:
         tile_poly (shapely geometry): Tile polygon in epsg:4326.
-        pastizal_eq (GeoDataFrame): Pasture polygons in an equal-area crs.
+        pasture_eq (GeoDataFrame): Pasture polygons in an equal-area crs.
         eq_area_crs (str): Equal-area crs string.
 
     Returns:
@@ -99,7 +123,7 @@ def pasture_fraction_for_tile(tile_poly, pastizal_eq, eq_area_crs):
     tile_geom_eq = tile_eq.geometry.iloc[0]
     tile_area = float(tile_geom_eq.area)
 
-    inter = gpd.overlay(pastizal_eq, tile_eq, how="intersection")
+    inter = gpd.overlay(pasture_eq, tile_eq, how="intersection")
     if inter.empty or tile_area <= 0:
         return 0.0
 
@@ -220,9 +244,9 @@ def main_pasture():
     print("[auth] building oauth session...")
     oauth = build_oauth_session(client_id, client_secret, token_url)
 
-    print("[inegi] loading pastizales naturales...")
-    pastizal_all = load_inegi_natural_pasture(shp_paths, keywords_lower)
-    pastizal_eq = pastizal_all.to_crs(eq_area_crs)
+    print("[inegi] loading pasturees naturales...")
+    pasture_all = load_inegi_natural_pasture(shp_paths, keywords_lower)
+    pasture_eq = pasture_all.to_crs(eq_area_crs)
 
     tile_defs = cfg["tiles"]["tile_defs"]
     teseachi_bbox = cfg["tiles"]["teseachi_bbox"]
@@ -237,7 +261,7 @@ def main_pasture():
         tile_poly = box(*bbox)
         inside = bool(tile_poly.intersects(state_union))
 
-        frac_past = pasture_fraction_for_tile(tile_poly, pastizal_eq, eq_area_crs)
+        frac_past = pasture_fraction_for_tile(tile_poly, pasture_eq, eq_area_crs)
         mean_dem = dem_mean_for_bbox(oauth, process_url, bbox, dem_coarse_px, dem_instance, upsampling, downsampling)
 
         rows.append(
@@ -253,7 +277,7 @@ def main_pasture():
     # We do teseachi.
     tes_poly = box(*teseachi_bbox)
     tes_inside = bool(tes_poly.intersects(state_union))
-    tes_frac = pasture_fraction_for_tile(tes_poly, pastizal_eq, eq_area_crs)
+    tes_frac = pasture_fraction_for_tile(tes_poly, pasture_eq, eq_area_crs)
     tes_mean_dem = dem_mean_for_bbox(oauth, process_url, teseachi_bbox, dem_coarse_px, dem_instance, upsampling, downsampling)
 
     rows.append(
