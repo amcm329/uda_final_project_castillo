@@ -10,4 +10,5 @@ from modeling.data_wrangler import *
 from quality.quality_vegetation import * 
 from quality.quality_geographical_tiles import * 
 
-
+if __name__ == "__main__":
+    main_training()
