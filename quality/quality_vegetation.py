@@ -1,8 +1,10 @@
 # Vegetation table
-
-import json
 import os
+import json
 import time
+
+import requests
+from osgeo import gdal
 
 import numpy as np
 import pandas as pd
@@ -12,11 +14,10 @@ from shapely.geometry import box
 import rasterio
 from rasterio.io import MemoryFile
 
-import requests
-from osgeo import gdal
-
-from oauthlib.oauth2 import BackendApplicationClient
 from requests_oauthlib import OAuth2Session
+from oauthlib.oauth2 import BackendApplicationClient
+
+from utilities.utilities import *
 
 
 def filter_natural_pasture(gdf, keywords_lower):
@@ -267,15 +268,3 @@ def main_pasture(config_path, client_id, client_secret):
 
     elapsed = time.time() - t0
     print(f"[done] time elapsed: {format_seconds(elapsed)}")
-
-
-if __name__ == "__main__":
-    config_path = os.getenv("config_path", "configuration.json")
-    cfg = read_json(config_path)
-    client_id = os.getenv(cfg["auth"]["client_id_env"])
-    client_secret = os.getenv(cfg["auth"]["client_secret_env"])
-    if not client_id or not client_secret:
-        raise RuntimeError("missing client_id/client_secret in environment")
-
-    # CLIENT_ID and CLIENT_SECRET must exist in your environment / above this code
-    main_pasture(config_path=config_path, client_id=client_id, client_secret=client_secret)
