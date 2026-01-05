@@ -616,7 +616,7 @@ def resolve_device(device_preference):
 
 def main_training():
     t0_all = time.time()
-    cfg = read_json("utilites/configuration.json")
+    cfg = read_json("utilities/configuration.json")
 
     tr = cfg["training"]
 
@@ -669,16 +669,9 @@ def main_training():
 
     proxy_map = load_proxy_csv(proxy_csv_path)
 
-    train_patches, train_tile_patch_index = build_training_patches(
-        train_tiles=train_tiles,
-        patch_size=patch_size,
-        stride=stride
-    )
-    teseachi_patches = build_teseachi_patches(
-        teseachi_path=teseachi_path,
-        patch_size=patch_size,
-        stride=stride
-    )
+    train_patches, train_tile_patch_index = build_training_patches(train_tiles=train_tiles, patch_size=patch_size,stride=stride)
+
+    teseachi_patches = build_teseachi_patches(teseachi_path=teseachi_path, patch_size=patch_size, stride=stride)
 
     # We infer expected patch counts from the actual tile raster sizes on disk.
     with rasterio.open(train_tiles[0][1]) as _src0:
@@ -702,46 +695,16 @@ def main_training():
     t0 = time.time()
     print("\n[Subsection] Stage A: Self-supervised Tiny CNN (Canny edge task)")
 
-    ssl_dataset = PatchSslDataset(
-        patches_chw=train_patches,
-        canny_sigma=canny_sigma,
-        canny_low=canny_low,
-        canny_high=canny_high
-    )
-    ssl_loader = DataLoader(
-        ssl_dataset,
-        batch_size=batch_size,
-        shuffle=shuffle,
-        num_workers=num_workers
-    )
+    ssl_dataset = PatchSslDataset(patches_chw=train_patches, canny_sigma=canny_sigma, canny_low=canny_low, canny_high=canny_high
+                                 )
+    ssl_loader = DataLoader(ssl_dataset, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers)
 
     in_channels = int(train_patches[0].shape[0])
     ssl_model = SslEdgeModel(in_channels=in_channels, emb_dim=emb_dim, patch_size=patch_size)
 
-    hist = train_stage_a_ssl(
-        model=ssl_model,
-        loader=ssl_loader,
-        device=device,
-        epochs=epochs,
-        lr=lr,
-        plot_dir=stage_a_plot_dir,
-        weight_decay=weight_decay,
-        pos_weight=pos_weight,
-        grad_clip_max_norm=grad_clip_max_norm,
-        f1_threshold=f1_threshold
-    )
+    hist = train_stage_a_ssl(model=ssl_model, loader=ssl_loader, device=device, epochs=epochs, lr=lr, plot_dir=stage_a_plot_dir, weight_decay=weight_decay, pos_weight=pos_weight, grad_clip_max_norm=grad_clip_max_norm, f1_threshold=f1_threshold)
 
-    visualize_stage_a_samples(
-        model=ssl_model,
-        patches=train_patches,
-        device=device,
-        plot_dir=stage_a_plot_dir,
-        canny_sigma=canny_sigma,
-        canny_low=canny_low,
-        canny_high=canny_high,
-        n=3,
-        pred_threshold=pred_threshold
-    )
+    visualize_stage_a_samples(model=ssl_model, patches=train_patches, device=device, plot_dir=stage_a_plot_dir, canny_sigma=canny_sigma, canny_low=canny_low, canny_high=canny_high, n=3, pred_threshold=pred_threshold)
 
     print(f"[Time] Stage A training elapsed: {format_seconds(time.time() - t0)}")
 
@@ -772,11 +735,7 @@ def main_training():
     print("\n[Subsection] Stage B: Proxy regression (Ridge)")
 
     train_tile_ids = [tid for tid, _ in train_tiles]
-    X_train, y_train = build_stage_b_training_data(
-        embeddings_by_tile=embeddings_by_tile,
-        proxy_map=proxy_map,
-        train_tile_ids=train_tile_ids
-    )
+    X_train, y_train = build_stage_b_training_data(embeddings_by_tile=embeddings_by_tile, proxy_map=proxy_map, train_tile_ids=train_tile_ids)
 
     ridge = train_stage_b_ridge(X_train=X_train, y_train=y_train, alpha=ridge_alpha)
     yhat_teseachi = ridge.predict(z_teseachi).astype(np.float32)
@@ -800,10 +759,7 @@ def main_training():
     teseachi_truth_path = os.path.join(proxy_dir, tr["teseachi_truth_csv_name"])
 
     if os.path.exists(teseachi_truth_path):
-        y_true_teseachi, yhat_use = load_teseachi_truth_and_align(
-            teseachi_truth_csv_path=teseachi_truth_path,
-            yhat_teseachi=yhat_teseachi
-        )
+        y_true_teseachi, yhat_use = load_teseachi_truth_and_align(teseachi_truth_csv_path=teseachi_truth_path, yhat_teseachi=yhat_teseachi)
 
         m = evaluate_stage_b(y_true=y_true_teseachi, y_pred=yhat_use)
 
@@ -811,12 +767,7 @@ def main_training():
         print(f"[Stage B Metric] RMSE on Teseachi (lower is better): {m['rmse']:.4f}")
         print(f"[Stage B Metric] Spearman rho on Teseachi (higher is better): {m['spearman']:.4f}")
 
-        plot_stage_b_scatter(
-            y_true=y_true_teseachi,
-            y_pred=yhat_use,
-            plot_path=os.path.join(stage_b_plot_dir, "stage_b_teseachi_scatter.png"),
-            title="Stage B: Predicted vs proxy biomass (Teseachi)"
-        )
+        plot_stage_b_scatter(y_true=y_true_teseachi, y_pred=yhat_use, plot_path=os.path.join(stage_b_plot_dir, "stage_b_teseachi_scatter.png"), title="Stage B: Predicted vs proxy biomass (Teseachi)")
     else:
         print("[Stage B Metric] Proxy Teseachi biomass file not found, so R2/RMSE/Spearman vs proxy cannot be computed.")
         print(f"We expected: {teseachi_truth_path}")
