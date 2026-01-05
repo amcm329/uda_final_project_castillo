@@ -6,3 +6,5 @@ rasterio
 matplotlib
 torch
 scikit-learn
+geopandas
+shapely
