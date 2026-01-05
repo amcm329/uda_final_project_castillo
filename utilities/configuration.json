@@ -87,7 +87,7 @@
   "shuffle": true,
 
   "emb_dim": 16,
-  "epochs": 40,
+  "epochs": 2,
   "lr": 0.001,
   "weight_decay": 0.001,
   "grad_clip_max_norm": 1.0,
