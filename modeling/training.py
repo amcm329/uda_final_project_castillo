@@ -526,19 +526,8 @@ def build_stage_b_training_data(embeddings_by_tile, proxy_map, train_tile_ids):
             X shape (N_total_patches, D)
             y shape (N_total_patches,)
     """
-    X_list = []
-    y_list = []
-    for tid in train_tile_ids:
-        z = embeddings_by_tile[tid]
-        if tid not in proxy_map:
-            raise KeyError(f"Missing proxy value for tile id {tid} in proxy_biomass.csv")
-        y_tile = float(proxy_map[tid])
-        y_rep = np.full((z.shape[0],), y_tile, dtype=np.float32)
-        X_list.append(z.astype(np.float32))
-        y_list.append(y_rep)
-
-    X = np.vstack(X_list)
-    y = np.concatenate(y_list)
+    X = np.vstack([embeddings_by_tile[tid].mean(axis=0, keepdims=True) for tid in train_tile_ids])
+    y = np.array([float(proxy_map[tid]) for tid in train_tile_ids], dtype=np.float32)
     return X, y
 
 
@@ -562,6 +551,32 @@ def train_stage_b_ridge(X_train, y_train, alpha, use_standard_scaler=True, ridge
         model = Ridge(alpha=alpha, fit_intercept=bool(ridge_fit_intercept), random_state=0)
     model.fit(X_train, y_train)
     return model
+
+
+def predict_stage_b_tile_level(ridge_model, z_teseachi):
+    """
+    Generates Stage B predictions for a single evaluation tile.
+
+    The prediction is computed at the tile level by averaging all patch
+    embeddings into a single vector, applying the Ridge model once, and then
+    broadcasting the resulting scalar prediction back to all patches. This
+    preserves compatibility with patch-level plots and metrics while keeping
+    the statistical model tile-consistent.
+
+    Args:
+        ridge_model:
+            Trained Ridge regression model.
+        z_teseachi (np.ndarray):
+            Patch embeddings for the evaluation tile,
+            shape (N_patches, D).
+
+    Returns:
+        np.ndarray:
+            Array of shape (N_patches,), where all values are identical
+            and equal to the tile-level prediction.
+    """
+    y_tile = ridge_model.predict(z_teseachi.mean(axis=0, keepdims=True))[0]
+    return np.full((z_teseachi.shape[0],), y_tile, dtype=np.float32)
 
 
 def evaluate_stage_b(y_true, y_pred):
@@ -813,7 +828,7 @@ def main_training():
         ridge_fit_intercept=ridge_fit_intercept,
     )
 
-    yhat_teseachi = ridge.predict(z_teseachi).astype(np.float32)
+    yhat_teseachi = predict_stage_b_tile_level(ridge_model=ridge, z_teseachi=z_teseachi).astype(np.float32)
 
     print(f"We trained Ridge on X shape {X_train.shape} with y shape {y_train.shape}.")
     print(f"We produced Teseachi patch predictions with shape {yhat_teseachi.shape}.")
