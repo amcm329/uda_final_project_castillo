@@ -78,18 +78,12 @@ def load_inegi_natural_pasture(shp_paths, keywords_lower):
 
         g = gpd.read_file(shp_file)
         if g.crs is None:
-            raise RuntimeError("chihuahua_tiles has no crs")
+            raise RuntimeError("chihuahua_tiles has no CRS")
 
         g = g.to_crs("EPSG:4326")
-        g_past = filter_natural_pasture(g, keywords_lower)
 
-        print(f"[inegi] file=chihuahua_tiles total={len(g)} pastizal_nat={len(g_past)}")
-        if g_past.empty:
-            raise RuntimeError("no 'pastizales naturales' polygons found")
-
-        merged = gpd.GeoDataFrame(pd.concat([g_past], ignore_index=True), crs="EPSG:4326")
-        print(f"[inegi] merged pastizal_nat polygons: {len(merged)}")
-        return merged
+        print(f"[inegi] file=chihuahua_tiles total={len(g)} (no filtering applied)")
+        return g
 
     finally:
         shutil.rmtree(repo_out_dir, ignore_errors=True)
