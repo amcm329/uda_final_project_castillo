@@ -3,6 +3,9 @@ import csv
 import rasterio
 import numpy as np
 
+import requests
+from osgeo import gdal
+
 from oauthlib.oauth2 import BackendApplicationClient
 from requests_oauthlib import OAuth2Session
 
@@ -26,6 +29,7 @@ def format_seconds(seconds):
     rem = seconds - 60 * minutes
     return f"{minutes}m {rem:.2f}s"
 
+
 def read_json(path):
     """
     Reads a json file from disk and returns the parsed object.
@@ -38,6 +42,7 @@ def read_json(path):
     """
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
+
 
 def build_oauth_session(client_id, client_secret, token_url):
     """
@@ -61,6 +66,30 @@ def build_oauth_session(client_id, client_secret, token_url):
     )
     return oauth
     
+def load_gadm_level1_in_memory(gadm_zip, level1_member):
+    """
+    Loads the gadm level-1 shapefile from a zip downloaded into gdal in-memory storage.
+
+    Args:
+        gadm_zip (str): Url to gadm zip.
+        level1_member (str): Member shapefile name inside the zip.
+
+    Returns:
+        GeoDataFrame: Level-1 gadm geodataframe.
+    """
+    # We download into ram (vsimem).
+    zip_bytes = requests.get(gadm_zip, stream=False).content
+
+    vsimem_zip = "/vsimem/gadm41_mex_shp.zip"
+    gdal.FileFromMemBuffer(vsimem_zip, zip_bytes)
+
+    # We read the member directly through /vsizip + /vsimem.
+    gdf = gpd.read_file(f"/vsizip/{vsimem_zip}/{level1_member}")
+
+    # We cleanup in-memory files.
+    gdal.Unlink(vsimem_zip)
+    return gdf
+
 
 def read_tile_tif(filepath):
     """
