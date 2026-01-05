@@ -86,17 +86,17 @@
   "num_workers": 0,
   "shuffle": true,
 
-  "emb_dim": 64,
+  "emb_dim": 16,
   "epochs": 40,
   "lr": 0.001,
-  "weight_decay": 0.00005,
+  "weight_decay": 0.001,
   "grad_clip_max_norm": 1.0,
 
   "pos_weight": 8.0,
   "f1_threshold": 0.10,
   "pred_threshold": 0.10,
 
-  "ridge_alpha": 1.0,
+  "ridge_alpha": 10000.0,
 
   "device_preference": "auto"
 }
