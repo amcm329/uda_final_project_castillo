@@ -13,6 +13,7 @@ from oauthlib.oauth2 import BackendApplicationClient
 
 from utilities.utilities import *
 
+
 def tile_pixels_per_side(tile_size_km, target_res_m):
     """
     Computes the pixel size per side for a square tile.
