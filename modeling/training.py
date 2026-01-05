@@ -11,11 +11,12 @@ import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
 
 from sklearn.linear_model import Ridge
-from sklearn.metrics import mean_squared_error, r2_score
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import mean_squared_error, r2_score
 
 from utilities.utilities import *
+
 
 def normalize_per_band(x, eps=1e-6):
     """
@@ -289,6 +290,7 @@ class PatchSslDataset(Dataset):
         x = torch.from_numpy(patch).float()
         y = torch.from_numpy(edges[None, :, :]).float()  # (1,H,W)
         return x, y
+
 
 def build_training_patches(train_tiles, patch_size, stride):
     """
