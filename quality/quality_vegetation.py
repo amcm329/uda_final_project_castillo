@@ -1,4 +1,5 @@
-# pastizales.py
+# Vegetation table
+
 import json
 import os
 import time
@@ -16,32 +17,6 @@ from osgeo import gdal
 
 from oauthlib.oauth2 import BackendApplicationClient
 from requests_oauthlib import OAuth2Session
-
-
-def load_gadm_level1_in_memory(gadm_zip, level1_member):
-    """
-    Loads the gadm level-1 shapefile from a zip downloaded into gdal in-memory storage.
-
-    Args:
-        gadm_zip (str): Url to gadm zip.
-        level1_member (str): Member shapefile name inside the zip.
-
-    Returns:
-        GeoDataFrame: Level-1 gadm geodataframe.
-    """
-    # We download into ram (vsimem).
-    zip_bytes = requests.get(gadm_zip, stream=False).content
-
-    vsimem_zip = "/vsimem/gadm41_mex_shp.zip"
-    gdal.FileFromMemBuffer(vsimem_zip, zip_bytes)
-
-    # We read the member directly through /vsizip + /vsimem.
-    gdf = gpd.read_file(f"/vsizip/{vsimem_zip}/{level1_member}")
-
-    # We cleanup in-memory files.
-    gdal.Unlink(vsimem_zip)
-    return gdf
-
 
 def load_state_polygon(cfg):
     """
@@ -65,7 +40,7 @@ def load_state_polygon(cfg):
     return state
 
 
-def filter_pastizal_natural(gdf, keywords_lower):
+def filter_natural_pasture(gdf, keywords_lower):
     """
     Filters features whose string columns match the configured pasture keywords.
 
@@ -91,7 +66,7 @@ def filter_pastizal_natural(gdf, keywords_lower):
     return gdf[mask].copy()
 
 
-def load_inegi_pastizal_natural(shp_paths, keywords_lower):
+def load_inegi_natural_pasture(shp_paths, keywords_lower):
     """
     Loads inegi shapefiles and filters them to natural pastures.
 
@@ -109,7 +84,7 @@ def load_inegi_pastizal_natural(shp_paths, keywords_lower):
         if g.crs is None:
             raise RuntimeError(f"{p} has no crs; set it before running")
         g = g.to_crs("EPSG:4326")
-        g_past = filter_pastizal_natural(g, keywords_lower)
+        g_past = filter_natural_pasture(g, keywords_lower)
         print(f"[inegi] file={p} total={len(g)} pastizal_nat={len(g_past)}")
         if not g_past.empty:
             parts.append(g_past)
@@ -259,7 +234,7 @@ def main_pasture(config_path, client_id, client_secret):
     oauth = build_oauth_session(client_id, client_secret, token_url)
 
     print("[inegi] loading pastizales naturales...")
-    pastizal_all = load_inegi_pastizal_natural(shp_paths, keywords_lower)
+    pastizal_all = load_inegi_natural_pasture(shp_paths, keywords_lower)
     pastizal_eq = pastizal_all.to_crs(eq_area_crs)
 
     tile_defs = cfg["tiles"]["tile_defs"]
